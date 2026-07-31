@@ -9,12 +9,29 @@ export default function Home() {
   const [dueDate, setDueDate] = useState('');
   const [topic, setTopic] = useState('');
   const [showArchived, setShowArchived] = useState(false);
+  const [sortBy, setSortBy] = useState('due_date');
 
   const fetchTasks = async (archived = showArchived) => {
     const res = await fetch(`/api/tasks?archived=${archived}`);
     const data = await res.json();
     setTasks(data);
   };
+
+  const sortedTasks = [...tasks].sort((a, b) => {
+  if (sortBy === 'due_date') {
+    if (!a.due_date) return 1;
+    if (!b.due_date) return -1;
+    return new Date(a.due_date) - new Date(b.due_date);
+  }
+  if (sortBy === 'topic') {
+    return a.topic.localeCompare(b.topic);
+  }
+  if (sortBy === 'status') {
+    const order = { todo: 0, in_progress: 1, complete: 2 };
+    return order[a.status] - order[b.status];
+  }
+  return 0;
+  });
 
   useEffect(() => {
   fetchTasks(showArchived);
@@ -69,19 +86,30 @@ export default function Home() {
     </form>
 
     <div className="flex justify-between items-center mb-3">
-      <h2 className="text-lg font-semibold">
-        {showArchived ? 'Archived Tasks' : 'Active Tasks'}
-      </h2>
-      <button
-        onClick={() => setShowArchived(!showArchived)}
-        className="text-sm text-blue-600 hover:text-blue-800"
-      >
-        {showArchived ? 'Show active tasks' : 'Show archived tasks'}
-      </button>
-    </div>
+  <h2 className="text-lg font-semibold">
+    {showArchived ? 'Archived Tasks' : 'Active Tasks'}
+  </h2>
+  <div className="flex items-center gap-3">
+    <select
+      value={sortBy}
+      onChange={(e) => setSortBy(e.target.value)}
+      className="text-sm border rounded p-1"
+    >
+      <option value="due_date">Sort by due date</option>
+      <option value="topic">Sort by topic</option>
+      <option value="status">Sort by status</option>
+    </select>
+    <button
+      onClick={() => setShowArchived(!showArchived)}
+      className="text-sm text-blue-600 hover:text-blue-800"
+    >
+      {showArchived ? 'Show active tasks' : 'Show archived tasks'}
+    </button>
+  </div>
+</div>
 
     <ul className="space-y-2">
-      {tasks.map((task) => (
+      {sortedTasks.map((task) => (
         <li key={task.id} className="border rounded p-3 flex justify-between items-start">
           <div>
             <div className="font-semibold">{task.title}</div>
