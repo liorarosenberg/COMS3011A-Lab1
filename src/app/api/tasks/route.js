@@ -2,10 +2,13 @@ import db from '@/lib/db';
 import { NextResponse } from 'next/server';
 
 // GET /api/tasks - list all non-archived tasks
-export async function GET() {
-  const tasks = db.prepare(`
-    SELECT * FROM tasks WHERE archived_at IS NULL ORDER BY due_date ASC
-  `).all();
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const showArchived = searchParams.get('archived') === 'true';
+
+  const tasks = showArchived
+    ? db.prepare(`SELECT * FROM tasks WHERE archived_at IS NOT NULL ORDER BY due_date ASC`).all()
+    : db.prepare(`SELECT * FROM tasks WHERE archived_at IS NULL ORDER BY due_date ASC`).all();
 
   return NextResponse.json(tasks);
 }

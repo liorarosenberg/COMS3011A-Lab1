@@ -8,16 +8,17 @@ export default function Home() {
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [topic, setTopic] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
 
-  const fetchTasks = async () => {
-    const res = await fetch('/api/tasks');
+  const fetchTasks = async (archived = showArchived) => {
+    const res = await fetch(`/api/tasks?archived=${archived}`);
     const data = await res.json();
     setTasks(data);
   };
 
   useEffect(() => {
-    fetchTasks();
-  }, []);
+  fetchTasks(showArchived);
+  }, [showArchived]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -39,69 +40,67 @@ export default function Home() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ archive: true }),
   });
-  fetchTasks();
+  fetchTasks(showArchived);
+  };
+
+  const unarchiveTask = async (id) => {
+  await fetch(`/api/tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ archive: false }),
+  });
+  fetchTasks(showArchived);
   };
 
   return (
-    <main className="max-w-2xl mx-auto p-8">
-      <h1 className="text-2xl font-bold mb-6">My Tasks</h1>
+  <main className="max-w-2xl mx-auto p-8">
+    <h1 className="text-2xl font-bold mb-6">My Tasks</h1>
 
-      <form onSubmit={handleSubmit} className="space-y-3 mb-8 border-b pb-6">
-        <input
-          className="w-full border rounded p-2"
-          placeholder="Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          required
-        />
-        <textarea
-          className="w-full border rounded p-2"
-          placeholder="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-        <div className="flex gap-3">
-          <input
-            type="date"
-            className="border rounded p-2 flex-1"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-          />
-          <input
-            className="border rounded p-2 flex-1"
-            placeholder="Topic"
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            required
-          />
-        </div>
-        <button
-          type="submit"
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
-          Add Task
-        </button>
-      </form>
-
-      <ul className="space-y-2">
-        {tasks.map((task) => (
-        <li key={task.id} className="border rounded p-3 flex justify-between items-start">
-        <div>
-        <div className="font-semibold">{task.title}</div>
-        <div className="text-sm text-gray-600">{task.description}</div>
-        <div className="text-xs text-gray-400 mt-1">
-          {task.topic} · {task.status} · due {task.due_date || 'no date'}
-        </div>
+    <form onSubmit={handleSubmit} className="space-y-3 mb-8 border-b pb-6">
+      <input className="w-full border rounded p-2" placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+      <textarea className="w-full border rounded p-2" placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+      <div className="flex gap-3">
+        <input type="date" className="border rounded p-2 flex-1" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        <input className="border rounded p-2 flex-1" placeholder="Topic" value={topic} onChange={(e) => setTopic(e.target.value)} required />
       </div>
-      <button
-        onClick={() => archiveTask(task.id)}
-        className="text-sm text-red-600 hover:text-red-800 ml-4 shrink-0"
-      >
-        Archive
+      <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+        Add Task
       </button>
-    </li>
-  ))}
-      </ul>
-    </main>
-  );
+    </form>
+
+    <div className="flex justify-between items-center mb-3">
+      <h2 className="text-lg font-semibold">
+        {showArchived ? 'Archived Tasks' : 'Active Tasks'}
+      </h2>
+      <button
+        onClick={() => setShowArchived(!showArchived)}
+        className="text-sm text-blue-600 hover:text-blue-800"
+      >
+        {showArchived ? 'Show active tasks' : 'Show archived tasks'}
+      </button>
+    </div>
+
+    <ul className="space-y-2">
+      {tasks.map((task) => (
+        <li key={task.id} className="border rounded p-3 flex justify-between items-start">
+          <div>
+            <div className="font-semibold">{task.title}</div>
+            <div className="text-sm text-gray-600">{task.description}</div>
+            <div className="text-xs text-gray-400 mt-1">
+              {task.topic} · {task.status} · due {task.due_date || 'no date'}
+            </div>
+          </div>
+          <button
+            onClick={() => (showArchived ? unarchiveTask(task.id) : archiveTask(task.id))}
+            className={`text-sm ml-4 shrink-0 ${
+              showArchived ? 'text-green-600 hover:text-green-800' : 'text-red-600 hover:text-red-800'
+            }`}
+          >
+            {showArchived ? 'Unarchive' : 'Archive'}
+          </button>
+        </li>
+      ))}
+    </ul>
+  </main>
+);
 }
