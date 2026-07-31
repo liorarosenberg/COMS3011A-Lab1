@@ -33,6 +33,15 @@ export default function Home() {
     fetchTasks();
   };
 
+  const archiveTask = async (id) => {
+  await fetch(`/api/tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ archive: true }),
+  });
+  fetchTasks();
+  };
+
   return (
     <main className="max-w-2xl mx-auto p-8">
       <h1 className="text-2xl font-bold mb-6">My Tasks</h1>
@@ -76,14 +85,22 @@ export default function Home() {
 
       <ul className="space-y-2">
         {tasks.map((task) => (
-          <li key={task.id} className="border rounded p-3">
-            <div className="font-semibold">{task.title}</div>
-            <div className="text-sm text-gray-600">{task.description}</div>
-            <div className="text-xs text-gray-400 mt-1">
-              {task.topic} · {task.status} · due {task.due_date || 'no date'}
-            </div>
-          </li>
-        ))}
+        <li key={task.id} className="border rounded p-3 flex justify-between items-start">
+        <div>
+        <div className="font-semibold">{task.title}</div>
+        <div className="text-sm text-gray-600">{task.description}</div>
+        <div className="text-xs text-gray-400 mt-1">
+          {task.topic} · {task.status} · due {task.due_date || 'no date'}
+        </div>
+      </div>
+      <button
+        onClick={() => archiveTask(task.id)}
+        className="text-sm text-red-600 hover:text-red-800 ml-4 shrink-0"
+      >
+        Archive
+      </button>
+    </li>
+  ))}
       </ul>
     </main>
   );
