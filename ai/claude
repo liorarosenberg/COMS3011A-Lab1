@@ -1,0 +1,3925 @@
+# Claude Chat Transcript
+
+#### **Claude** (7/30/2026, 5:26:33 PM):
+ I've gone through both documents fully. Here's the situation and a step-by-step plan to get the best possible mark.
+
+## What the two documents are
+
+**`lab_one_1.pdf`** — COMS3011A Lab 1 brief ("Starting a Project"), due **4 August 2026**. You build a local-first todo app with Next.js + SQLite, marked out of 100 (28 functional walkthrough + 72 rubric).
+
+**`ai_policy.pdf`** — the course's AI usage policy. It's not optional reading — it directly determines 8 of your 72 rubric marks and gates whether *any* of your documentation counts at all.
+
+## Step-by-step plan
+
+**1. Set up the repo and Next.js/SQLite skeleton first**
+Init a Next.js app, add SQLite (e.g. via `better-sqlite3` or Prisma+SQLite), and get a single trivial commit in — this is your first "coherent slice."
+
+**2. Design the schema before writing features**
+One `tasks` table: `id, title, description, due_date, topic, status (todo/in_progress/complete), archived_at (nullable timestamp — NOT a boolean or separate table)`. Overdue must be **derived at read time** (`due_date < now() AND status != complete`), never stored as a column or status. This directly maps to the rubric's "Complete" tier for Database design (16 marks) — get this wrong and you cap out at 1/2.
+
+**3. Build features incrementally, committing after each working slice**
+Suggested order, each its own commit(s):
+- Create task (all 4 fields) → list view
+- Edit task, persists on reload
+- Archive (flag/timestamp, not delete, not copy elsewhere)
+- Sorting by topic/status/due date
+- Overdue visual flag (not a 4th status)
+- Persistence check (restart app, data survives)
+
+Aim for **6+ commits minimum**, spread over multiple sessions (not all in one sitting), with messages that say *what* and *why*. This is 18 marks and easy to lose by dumping everything in 1-2 commits.
+
+**4. Write tests as you go, not at the end**
+At least 3 tests exercising real behavior (not smoke tests), including one for archiving and one for the overdue rule. Run against a throwaway/test DB (not your dev database), runnable via one documented command (e.g. `npm test`).
+
+**5. Write the documentation (as markdown in the repo)**
+Three required sections, each needs to hit "Complete" tier:
+- **Third-Party Code**: every library you installed + one-line justification each.
+- **Database Design**: your tables and relationships (must match the shipped schema exactly).
+- **Running It**: Node version + exact install/run/test commands, verified from a clean clone.
+
+**6. Handle AI declarations correctly — this is where people lose easy marks**
+Per the AI policy:
+- Every document (docs, README, etc.) needs an explicit declaration line, e.g. *"The preceding document was written without the assistance of AI"* or naming tool+model. **A document without this line isn't marked at all.**
+- Every commit where you used AI for code gen needs `Assisted-by: <tool>[<model>]` in the commit message.
+- The README must declare AI usage categories (code generation / in-line editing / code review) — usage or explicit non-usage for each.
+- Keep transcripts of your AI planning/generation/debugging sessions — these are a submission requirement and also feed the 8-mark "AI usage" rubric line, which specifically rewards you for **catching and correcting** a bad AI output, not just using AI smoothly.
+
+**7. Do a full clean-clone dry run before submitting**
+Delete your local copy, re-clone, and follow only your own README to install/run/test. This is exactly what markers do for the 28-mark functional walkthrough, and failing step 1 costs you the whole walkthrough score if you can't recover in 10 minutes.
+
+**8. Final submission checklist**
+- GitHub repo link
+- Documentation files (with declarations)
+- AI usage transcripts
+
+If it'd help, I can draft the initial database schema, a README template with the correct AI-declaration formatting, or a test-file skeleton — just say which.
+
+#### **User** (7/30/2026, 5:26:33 PM):
+ Go through each document thoroughly and explain to me step by step what I need to accomplish and get the best result
+
+#### **Claude** (7/30/2026, 5:53:23 PM):
+ 
+
+#### **User** (7/30/2026, 5:53:24 PM):
+ Since ive created the repo and already cloned my repository, lets get started on Next.js and SQLite
+
+#### **Claude** (7/30/2026, 5:56:14 PM):
+ Good choices — that combo keeps the schema dead simple to justify in your docs. Let's build the skeleton.
+
+## Step 1: Scaffold Next.js into your existing repo
+
+Since the repo's already cloned (presumably just has a README/LICENSE in it), run this from inside the repo folder:
+
+```bash
+npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm
+```
+
+If it complains the directory isn't empty, that's fine as long as it's just README/LICENSE/.gitignore — it'll ask to continue.
+
+## Step 2: Install better-sqlite3
+
+```bash
+npm install better-sqlite3
+npm install -D @types/better-sqlite3
+```
+
+**Why better-sqlite3** (for your Third-Party Code doc): it's synchronous, has no native async/Promise overhead, and is the standard choice for local-first single-user Node apps — no need for a connection pool or async driver complexity.
+
+## Step 3: Create the database module
+
+```bash
+mkdir -p src/lib data
+```
+
+`src/lib/db.ts`:
+```typescript
+import Database from 'better-sqlite3';
+import path from 'path';
+
+const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'data', 'app.db');
+const db = new Database(dbPath);
+
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    due_date TEXT,
+    topic TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('todo', 'in_progress', 'complete')) DEFAULT 'todo',
+    archived_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+export default db;
+```
+
+Notes baked in on purpose:
+- `archived_at` is a nullable timestamp, not a boolean flag or a separate table — satisfies the rubric's "archive represented as a flag or timestamp on the task."
+- `status` has a `CHECK` constraint limiting it to exactly the three fixed values — no "overdue" status sneaks in.
+- No `is_overdue` column anywhere — that's computed later at read time from `due_date` and `status`.
+
+## Step 4: Gitignore the actual database file
+
+Add to `.gitignore`:
+```
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+```
+
+But keep the `data/` folder trackable so a clean clone works:
+```bash
+touch data/.gitkeep
+git add data/.gitkeep
+```
+
+## Step 5: Sanity check it runs
+
+```bash
+npm run dev
+```
+
+Then quickly test the db module works — e.g. temporarily import `db` in `src/app/page.tsx` and run a `db.prepare('SELECT 1').get()` — just to confirm SQLite initializes without errors, then remove the test line.
+
+## Step 6: First commit
+
+```bash
+git add .
+git commit -m "Scaffold Next.js app with Tailwind and initialize SQLite schema
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+```
+
+(Adjust the tool/model tag to whatever you're actually using — that line is required per the course AI policy since this commit includes AI-assisted code.)
+
+---
+
+Next natural step is the **create-task** flow: an API route (`src/app/api/tasks/route.ts`) plus a form component. Want me to build that next, or do you want to wire up the list/read view first?
+
+#### **Claude** (7/30/2026, 6:03:55 PM):
+ That error is because `create-next-app` derives the npm package name from the folder name (`COMS3011A-Lab1`), and npm package names can't have capital letters. The folder itself is fine to keep — you just need to scaffold somewhere with a lowercase name first, then move the files in.
+
+## Fix: scaffold into a temp folder, then merge into your repo
+
+```bash
+# from one level above your repo, or just use /tmp
+cd ..
+npx create-next-app@latest todo-app --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm
+```
+
+Then merge it into your actual repo folder (this preserves your existing README, LICENSE, `.git`, etc.):
+
+```bash
+cd todo-app
+
+# back up your repo's existing README so create-next-app's default doesn't clobber it
+mv ../COMS3011A-Lab1/README.md ../COMS3011A-Lab1/README.md.bak 2>/dev/null
+
+# move everything, including dotfiles, into your repo
+shopt -s dotglob
+mv * ../COMS3011A-Lab1/
+shopt -u dotglob
+
+cd ../COMS3011A-Lab1
+
+# restore your original README, or merge manually if you want to keep both
+rm -f README.md          # the generated boilerplate one
+mv README.md.bak README.md 2>/dev/null
+```
+
+Then check nothing important got overwritten:
+
+```bash
+git status
+```
+
+You should see the new `package.json`, `src/`, `next.config.*`, `.gitignore` (Next's own, which you may want to merge with any existing one), etc., all showing as new/modified — but your `.git` folder and prior history untouched.
+
+## One thing to double check
+
+`create-next-app`'s own `.gitignore` will include `node_modules`, `.next`, etc. If your repo already had a `.gitignore`, diff them and combine rather than letting one overwrite the other:
+
+```bash
+cat .gitignore
+```
+
+Once `git status` looks right, continue with installing `better-sqlite3` as planned:
+
+```bash
+npm install better-sqlite3
+npm install -D @types/better-sqlite3
+```
+
+Let me know once that's sorted and we'll move to Step 3 (the db module) — or paste the `git status` output if anything looks off and I'll help sort it out.
+
+#### **User** (7/30/2026, 6:03:55 PM):
+ npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias "@/*" --use-npm
+Need to install the following packages:
+create-next-app@16.2.12
+Ok to proceed? (y) y
+Could not create a project called "COMS3011A-Lab1" because of npm naming restrictions:
+    * name can no longer contain capital letters
+
+#### **Claude** (7/30/2026, 8:45:39 PM):
+ Nice, that's the base commit done. Now let's wire up SQLite.
+
+## Step 1: Install better-sqlite3
+
+```bash
+npm install better-sqlite3
+npm install -D @types/better-sqlite3
+```
+
+## Step 2: Create the data folder and db module
+
+```bash
+mkdir -p src/lib data
+```
+
+`src/lib/db.ts`:
+```typescript
+import Database from 'better-sqlite3';
+import path from 'path';
+
+const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'data', 'app.db');
+const db = new Database(dbPath);
+
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    due_date TEXT,
+    topic TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('todo', 'in_progress', 'complete')) DEFAULT 'todo',
+    archived_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+export default db;
+```
+
+Why it's built this way (keep this reasoning for your Database Design doc later):
+- **`archived_at`** is a nullable timestamp, not a boolean. It doubles as an audit trail (you know *when* something was archived) and satisfies the rubric's requirement that archiving be a flag/timestamp on the row, not a delete or a copy to another table.
+- **`status`** is constrained with `CHECK` to exactly `todo` / `in_progress` / `complete`. "Overdue" is deliberately *not* a fourth status — it's a derived property.
+- **`created_at`/`updated_at`** aren't strictly required by the brief, but they're free with SQLite's `datetime('now')` default and make debugging/sorting easier — worth a one-line mention in your docs as a deliberate addition beyond spec.
+
+## Step 3: Gitignore the actual database file, but keep the folder trackable
+
+```bash
+cat >> .gitignore << 'EOF'
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+EOF
+
+touch data/.gitkeep
+```
+
+## Step 4: Sanity-check it initializes
+
+Temporarily add this to `src/app/page.tsx` (top of the component function, or just log at module scope) to confirm the table gets created:
+
+```typescript
+import db from '@/lib/db';
+console.log(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all());
+```
+
+Run:
+```bash
+npm run dev
+```
+
+Check your terminal (not the browser) for the log output — you should see `[ { name: 'tasks' } ]`. Then remove that console.log line once confirmed.
+
+You can also confirm the file exists:
+```bash
+ls -la data/
+```
+
+## Step 5: Commit
+
+```bash
+git add .
+git commit -m "Add SQLite connection and tasks table schema
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+```
+
+Let me know once you see the table log correctly — then we'll build the **create-task API route + form**, which is the natural next slice.
+
+#### **User** (7/30/2026, 8:45:39 PM):
+ lets start with the sqlite stuff, ive successful commited the next.js things
+
+#### **Claude** (7/30/2026, 8:52:05 PM):
+ Ah, you're on PowerShell (Windows), so `mkdir -p src/lib data` won't work the way it does in bash — PowerShell's `mkdir` doesn't take `-p` and doesn't create multiple folders like that in one go.
+
+Looks like it only created a `database` folder at the repo root instead of `src/lib` and `data`. Let's fix that.
+
+## Clean up and create the right folders
+
+```powershell
+Remove-Item -Recurse -Force .\database
+mkdir src\lib
+mkdir data
+```
+
+(Or `New-Item -ItemType Directory -Path src\lib, data` does both in one line.)
+
+## Then create the db module
+
+```powershell
+New-Item -ItemType File -Path src\lib\db.ts
+```
+
+Open it in your editor and paste:
+
+```typescript
+import Database from 'better-sqlite3';
+import path from 'path';
+
+const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'data', 'app.db');
+const db = new Database(dbPath);
+
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    due_date TEXT,
+    topic TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('todo', 'in_progress', 'complete')) DEFAULT 'todo',
+    archived_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+export default db;
+```
+
+## Gitignore, PowerShell-friendly
+
+```powershell
+Add-Content .gitignore "`ndata/*.db`ndata/*.db-journal`ndata/*.db-wal`ndata/*.db-shm"
+New-Item -ItemType File -Path data\.gitkeep
+```
+
+## One Windows-specific gotcha with better-sqlite3
+
+It's a native module — it compiles C++ bindings on install. Make sure you have build tools available, otherwise `npm install` can fail on Windows. If `npm install better-sqlite3` errors out with something about `node-gyp` or missing Visual Studio build tools, let me know the exact error and I'll walk you through it (usually fixed by installing the `windows-build-tools` equivalent or Visual Studio's "Desktop development with C++" workload).
+
+Go ahead and run:
+
+```powershell
+npm install better-sqlite3
+npm install -D @types/better-sqlite3
+```
+
+Paste any error output here if it doesn't install cleanly — native module installs on Windows are the single most common snag at this step.
+
+#### **User** (7/30/2026, 8:52:05 PM):
+ I have this:  mkdir database
+    Directory: C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab
+    1\coms3011a-lab1
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----        2026/07/30     20:48                database
+
+#### **Claude** (7/30/2026, 8:53:16 PM):
+ That worked exactly as expected — `src\lib` and `data` are both created cleanly at the repo root.
+
+## Next: create the db module file
+
+```powershell
+New-Item -ItemType File -Path src\lib\db.ts
+```
+
+Then open it in your editor (VS Code: `code src\lib\db.ts`) and paste this in:
+
+```typescript
+import Database from 'better-sqlite3';
+import path from 'path';
+
+const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'data', 'app.db');
+const db = new Database(dbPath);
+
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    due_date TEXT,
+    topic TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('todo', 'in_progress', 'complete')) DEFAULT 'todo',
+    archived_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+export default db;
+```
+
+## Then install better-sqlite3
+
+```powershell
+npm install better-sqlite3
+npm install -D @types/better-sqlite3
+```
+
+Watch this step closely — it's a native module and Windows sometimes needs build tools to compile it. If you get an error mentioning `node-gyp`, `MSBuild`, `python`, or `Visual Studio`, paste it here and I'll help you sort it rather than guessing at a fix blind.
+
+## Then gitignore the db file
+
+```powershell
+Add-Content .gitignore "`ndata/*.db`ndata/*.db-journal`ndata/*.db-wal`ndata/*.db-shm"
+New-Item -ItemType File -Path data\.gitkeep
+```
+
+Go ahead and run the install — paste the output (success or error) and we'll move to the sanity-check step.
+
+#### **User** (7/30/2026, 8:53:16 PM):
+ Remove-Item -Recurse -Force .\database
+PS C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1> mkdir src\lib
+    Directory: C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab
+    1\coms3011a-lab1\src
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----        2026/07/30     20:52                lib
+PS C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1> mkdir data
+
+#### **Claude** (7/30/2026, 8:56:51 PM):
+ That created `.gitkeep` cleanly. Quick sanity check before moving on — let's confirm the `.gitignore` lines actually landed correctly, since `Add-Content` with backtick-n in PowerShell sometimes behaves oddly depending on your PowerShell version:
+
+```powershell
+Get-Content .gitignore
+```
+
+You should see `data/*.db`, `data/*.db-journal`, `data/*.db-wal`, `data/*.db-shm` each on their own line near the bottom. If they all got mashed onto one line instead, let me know and I'll give you a fix.
+
+## Also — did the npm install go through?
+
+You skipped past confirming this one — did `npm install better-sqlite3` and `npm install -D @types/better-sqlite3` complete without errors? That's the step most likely to snag on Windows (native module compilation). If you haven't run it yet:
+
+```powershell
+npm install better-sqlite3
+npm install -D @types/better-sqlite3
+```
+
+Paste the output either way — once that's confirmed clean, we'll do the sanity check to confirm the `tasks` table actually gets created:
+
+```powershell
+npm run dev
+```
+
+with a temporary `console.log(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all());` in `src/app/page.tsx`, checking the terminal (not the browser) for `[ { name: 'tasks' } ]`.
+
+#### **User** (7/30/2026, 8:56:51 PM):
+ Add-Content .gitignore "`ndata/*.db`ndata/*.db-journal`ndata/*.db-wal`ndata/*.db-shm"
+>> New-Item -ItemType File -Path data\.gitkeep
+    Directory: C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\COMS3011A-Lab1\data
+Mode                 LastWriteTime         Length Name                                                                                          
+----                 -------------         ------ ----                                                                                          
+-a----        2026/07/30     20:56              0 .gitkeep
+
+#### **Claude** (7/30/2026, 8:58:07 PM):
+ Good — "up to date" here means it installed successfully (or was already present from an earlier attempt), not that nothing happened. The vulnerability warnings are almost always from Next.js's own dependency tree (common and expected) — **don't run `npm audit fix --force`**, it can silently downgrade or break Next.js/Tailwind versions. Ignore it for now.
+
+Let's just confirm `better-sqlite3` actually landed correctly:
+
+```powershell
+npm list better-sqlite3
+```
+
+You should see something like `better-sqlite3@<version>`. Also check `package.json` has it listed under `dependencies`:
+
+```powershell
+Get-Content package.json | Select-String "sqlite"
+```
+
+## Now do the sanity check
+
+Open `src\app\page.tsx` and temporarily add near the top:
+
+```typescript
+import db from '@/lib/db';
+console.log(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all());
+```
+
+Then run:
+
+```powershell
+npm run dev
+```
+
+Watch the **terminal**, not the browser — you're looking for:
+
+```
+[ { name: 'tasks' } ]
+```
+
+If instead you get an error, it'll most likely be one of these:
+- **`Cannot find module 'better-sqlite3'`** → install didn't actually register; paste the error
+- **Something about `.node` bindings or `NODE_MODULE_VERSION` mismatch** → the native binary was compiled for a different Node version than you're running; tell me your Node version (`node -v`) and we'll rebuild
+- **Works but no log appears** → the import might be tree-shaken since it's unused elsewhere; make sure the `console.log` line is actually inside the component function body or at top-level module scope, not inside a comment or unreachable branch
+
+Paste whatever shows up in the terminal after `npm run dev`.
+
+#### **User** (7/30/2026, 8:58:07 PM):
+ npm install better-sqlite3
+>> npm install -D @types/better-sqlite3
+up to date, audited 362 packages in 4s
+145 packages are looking for funding
+  run `npm fund` for details
+12 high severity vulnerabilities
+To address issues that do not require attention, run:
+  npm audit fix
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+Run `npm audit` for details.
+up to date, audited 362 packages in 4s
+145 packages are looking for funding
+  run `npm fund` for details
+12 high severity vulnerabilities
+To address issues that do not require attention, run:
+  npm audit fix
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+Run `npm audit` for details
+
+#### **Claude** (7/30/2026, 9:00:50 PM):
+ That's odd given the `--typescript` flag — worth a quick check before we just roll with JS, since it affects whether your `@types/better-sqlite3` install matters at all.
+
+## Check if TypeScript is actually configured
+
+```powershell
+Test-Path tsconfig.json
+```
+
+- **If `True`** → the project *is* TypeScript-configured, but for some reason `create-next-app` (or the merge) left you `page.js` instead of `page.tsx`. Just rename it:
+  ```powershell
+  Rename-Item src\app\page.js page.tsx
+  ```
+  Next.js will pick it up fine as long as `tsconfig.json` exists.
+
+- **If `False`** → the project is genuinely plain JavaScript (the `--typescript` flag didn't take, possibly because of how the temp-folder merge worked, or an interactive prompt overrode it). In that case, don't fight it — just continue in JS. It's a valid, simpler choice and won't cost you rubric marks (the brief doesn't require TypeScript).
+
+Run that check and tell me which case you're in, and I'll adjust the `db.ts`/`db.js` file and import paths to match.
+
+#### **User** (7/30/2026, 9:00:50 PM):
+ i have page.js only not .tsx
+
+#### **Claude** (7/30/2026, 9:02:15 PM):
+ No problem — plain JS is totally fine here, nothing in the brief requires TypeScript. Let's adjust course.
+
+## Rename the db file to `.js`
+
+If you already created `src\lib\db.ts`, rename it:
+
+```powershell
+Rename-Item src\lib\db.ts db.js
+```
+
+## Update its contents (drop the TS-only bits)
+
+Open `src\lib\db.js` and make sure it looks like this — functionally identical, just no type annotations needed since there weren't any to begin with:
+
+```javascript
+import Database from 'better-sqlite3';
+import path from 'path';
+
+const dbPath = process.env.DB_PATH || path.join(process.cwd(), 'data', 'app.db');
+const db = new Database(dbPath);
+
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    description TEXT,
+    due_date TEXT,
+    topic TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('todo', 'in_progress', 'complete')) DEFAULT 'todo',
+    archived_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
+export default db;
+```
+
+## The `@types/better-sqlite3` package is now dead weight
+
+It's harmless to leave installed, but it's not doing anything for you in a JS project. Optional cleanup:
+
+```powershell
+npm uninstall @types/better-sqlite3
+```
+
+(Skip this if you don't care — it won't affect marks either way, just an unused devDependency.)
+
+## Now the sanity check, adjusted for `.js`
+
+Open `src\app\page.js` and temporarily add near the top:
+
+```javascript
+import db from '@/lib/db';
+console.log(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all());
+```
+
+Then run:
+
+```powershell
+npm run dev
+```
+
+Watch the **terminal** for:
+
+```
+[ { name: 'tasks' } ]
+```
+
+Paste whatever shows up.
+
+#### **User** (7/30/2026, 9:02:15 PM):
+ its false
+
+#### **Claude** (7/30/2026, 9:05:01 PM):
+ Two separate things going on here — neither is a real problem, just loose ends.
+
+## 1. Kill the leftover dev server
+
+You've got an old `npm run dev` still running in another terminal window (or one that didn't shut down properly) from a previous test. Kill it:
+
+```powershell
+taskkill /PID 8684 /F
+```
+
+Then re-run:
+
+```powershell
+npm run dev
+```
+
+## 2. The stray lockfile warning (fix now to avoid future headaches)
+
+Next.js found a `package-lock.json` at `C:\Users\liora\package-lock.json` — that's your **user home folder**, not your project. It's almost certainly leftover from some earlier global `npm install` or `create-next-app` run outside your project folder, and it's confusing Next.js about which folder is the "workspace root."
+
+Check if it's actually needed there:
+
+```powershell
+Get-Content C:\Users\liora\package.json -ErrorAction SilentlyContinue
+```
+
+If that returns nothing or something clearly unrelated to this project, it's safe to delete both stray files:
+
+```powershell
+Remove-Item C:\Users\liora\package-lock.json -ErrorAction SilentlyContinue
+Remove-Item C:\Users\liora\package.json -ErrorAction SilentlyContinue
+Remove-Item C:\Users\liora\node_modules -Recurse -Force -ErrorAction SilentlyContinue
+```
+
+(Only do this if that `package.json` is empty/unrelated — don't delete it if it turns out to belong to some other project you have sitting in your home folder.)
+
+## Then re-run and check the terminal output
+
+```powershell
+npm run dev
+```
+
+You're looking for `[ { name: 'tasks' } ]` printed in the terminal before/around the `✓ Ready` line. Paste what you see.
+
+#### **User** (7/30/2026, 9:05:01 PM):
+ npm run dev
+> coms3011a-lab1@0.1.0 dev
+> next dev
+⚠ Port 3000 is in use by process 8684, using available port 3001 instead.
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://localhost:3001
+- Network:       http://192.168.68.102:3001
+✓ Ready in 1229ms
+⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of C:\Users\liora\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\package-lock.json
+⨯ Another next dev server is already running.
+- Local:        http://localhost:3000
+- PID:          8684
+- Dir:          C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1
+- Log:          .next\dev\logs\next-development.log
+Run taskkill /PID 8684 /F to stop it.
+
+#### **Claude** (7/30/2026, 9:07:07 PM):
+ Ah, that's not junk — it's a real project (looks like some other Express app) sitting in your home folder. **Don't delete that one.** My apologies for suggesting deletion before checking.
+
+Instead, just tell Next.js explicitly which folder is the workspace root — that silences the warning without touching your `liora` project at all.
+
+## Fix: set `turbopack.root` in your Next config
+
+Open `next.config.mjs` (or `.js`, whichever you have) in your project root and add the `turbopack.root` setting:
+
+```javascript
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  turbopack: {
+    root: __dirname,
+  },
+};
+
+export default nextConfig;
+```
+
+If your file uses `module.exports` instead of `export default`, match that style instead:
+
+```javascript
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  turbopack: {
+    root: __dirname,
+  },
+};
+
+module.exports = nextConfig;
+```
+
+Check which style your file currently uses first:
+
+```powershell
+Get-Content next.config.mjs
+```
+
+(or `next.config.js` if that's the filename you have)
+
+## Then kill the stray dev server and restart
+
+```powershell
+taskkill /PID 8684 /F
+npm run dev
+```
+
+Now the warning should be gone, and you're just watching for the `[ { name: 'tasks' } ]` log in the terminal. Paste the output.
+
+#### **User** (7/30/2026, 9:07:07 PM):
+ Get-Content C:\Users\liora\package.json -ErrorAction SilentlyContinue
+{
+  "name": "liora",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}
+
+#### **Claude** (7/30/2026, 9:09:04 PM):
+ It should be sitting right in your project's root folder — same level as `package.json`.
+
+## Check if it exists and see its exact name
+
+```powershell
+Get-ChildItem -Path . -Filter "next.config.*"
+```
+
+This will show you whether it's `next.config.mjs`, `next.config.js`, or `next.config.ts`, whichever `create-next-app` generated for you.
+
+## If nothing shows up
+
+Some Next.js setups don't generate a config file at all if you didn't need one at scaffold time. In that case just create one:
+
+```powershell
+New-Item -ItemType File -Path next.config.mjs
+```
+
+Then open it and paste:
+
+```javascript
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  turbopack: {
+    root: __dirname,
+  },
+};
+
+export default nextConfig;
+```
+
+Run the `Get-ChildItem` command first and let me know what it finds — that tells us whether we're editing or creating.
+
+#### **User** (7/30/2026, 9:09:04 PM):
+ where do I find this
+
+#### **Claude** (7/30/2026, 9:11:47 PM):
+ Good question — you need to actually look at the file's current contents first, since it's a `.mjs` file (which almost always means ES module syntax, i.e. `export default`), but let's confirm rather than assume:
+
+```powershell
+Get-Content next.config.mjs
+```
+
+## How to decide based on what you see
+
+- **File ends in `.mjs`** → it's an ES module by definition, so it must use `export default nextConfig;`. This is almost certainly your case.
+- **File ends in `.js`** → check the contents: if you see `export default` already in there, keep using `export default`. If you see `module.exports =` already in there, use `module.exports` to match.
+
+The rule is simple: **match whatever's already in the file** — don't mix the two styles in the same file, and don't switch styles from what's already there.
+
+Paste what `Get-Content next.config.mjs` shows and I'll tell you exactly what to change.
+
+#### **User** (7/30/2026, 9:11:47 PM):
+ wait which do I use
+
+#### **Claude** (7/30/2026, 9:12:17 PM):
+ That confirms it — it's using `export default`, and it's currently empty (just the placeholder comment). Edit it to:
+
+```powershell
+notepad next.config.mjs
+```
+
+Replace the entire contents with:
+
+```javascript
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  turbopack: {
+    root: __dirname,
+  },
+};
+
+export default nextConfig;
+```
+
+Save and close, then restart the dev server:
+
+```powershell
+taskkill /PID 8684 /F
+npm run dev
+```
+
+The lockfile warning should be gone now. Paste the terminal output — we're still looking for `[ { name: 'tasks' } ]` to confirm the SQLite table got created.
+
+#### **User** (7/30/2026, 9:12:17 PM):
+ Get-Content next.config.mjs
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  /* config options here */
+};
+export default nextConfig;
+
+#### **Claude** (7/30/2026, 9:14:01 PM):
+ That old process was already gone (good — no zombie server), but now we've hit a real one: `__dirname` doesn't exist in `.mjs` files by default. That's a Node ES-module quirk — `__dirname`/`__filename` are CommonJS globals, and `.mjs` files run as native ES modules, so Node doesn't provide them automatically.
+
+## Fix: derive `__dirname` manually in ESM
+
+Open `next.config.mjs` and replace it with:
+
+```javascript
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  turbopack: {
+    root: __dirname,
+  },
+};
+
+export default nextConfig;
+```
+
+This reconstructs `__dirname` the ESM-correct way using `import.meta.url`.
+
+## Then restart
+
+```powershell
+npm run dev
+```
+
+Paste the output — checking both that the `turbopack.root` error is gone and that we finally see `[ { name: 'tasks' } ]` in the terminal.
+
+#### **User** (7/30/2026, 9:14:01 PM):
+ taskkill /PID 8684 /F
+ERROR: The process "8684" not found.
+PS C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\COMS3011A-Lab1> npm run dev
+> coms3011a-lab1@0.1.0 dev
+> next dev
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.68.102:3000
+✓ Ready in 1152ms
+⨯ Failed to load next.config.mjs, see more info here https://nextjs.org/docs/messages/next-config-error
+ReferenceError: __dirname is not defined in ES module scope
+    at <unknown> (next.config.mjs:4:11)
+
+#### **Claude** (7/30/2026, 9:18:47 PM):
+ Good progress — the `turbopack.root` fix worked (no more lockfile warning), and the server started clean. But no `[ { name: 'tasks' } ]` log yet — that's expected at this point, not a problem.
+
+## Why: the page hasn't been requested yet
+
+With the Next.js App Router, `page.js` only actually executes when something requests that route — `next dev` starting up doesn't run your page code, it just starts the server listening.
+
+## Trigger it
+
+Open your browser and go to:
+
+```
+http://localhost:3000
+```
+
+Then look back at your **terminal** (not the browser console) — that's where `console.log` output from server-side code shows up. You should see something like:
+
+```
+[ { name: 'tasks' } ]
+```
+
+printed shortly after the page loads.
+
+## If you see nothing after visiting the page
+
+Double check the `console.log` line is actually still in `src\app\page.js` and wasn't accidentally left out during the `.js`/`.ts` rename earlier:
+
+```powershell
+Get-Content src\app\page.js
+```
+
+Paste that output, or paste what shows up in the terminal after visiting the page — whichever happens.
+
+#### **User** (7/30/2026, 9:18:47 PM):
+ npm run dev
+> coms3011a-lab1@0.1.0 dev
+> next dev
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.68.102:3000
+✓ Ready in 1020ms
+
+#### **Claude** (7/30/2026, 9:20:31 PM):
+ That "up to date" message earlier was misleading — it likely meant npm saw a stale lockfile entry without the package actually being present in `node_modules`. Let's verify directly.
+
+## Check if it's really there
+
+```powershell
+Test-Path node_modules\better-sqlite3
+Get-Content package.json | Select-String "sqlite"
+```
+
+## Likely cause: OneDrive
+
+Your project lives inside `OneDrive\Documentos\GitHub\...`. This is a **very common culprit** for exactly this kind of failure — `better-sqlite3` is a native module that compiles a `.node` binary during install, and OneDrive's real-time file sync can interfere mid-install (locking files, syncing them away, or silently failing to write the compiled binary), leaving `node_modules` in a broken/partial state.
+
+## Fix: force a clean reinstall
+
+```powershell
+Remove-Item -Recurse -Force node_modules
+Remove-Item -Force package-lock.json
+npm install
+```
+
+This reinstalls everything from `package.json` fresh. Watch the output closely this time for any errors specifically mentioning `better-sqlite3`, `node-gyp`, `prebuild-install`, or `.node` binary — paste them if you see any.
+
+## If it fails again in the same way
+
+The more permanent fix is to **pause OneDrive syncing** while you work on this project, or better, move the whole project folder outside OneDrive entirely (e.g. `C:\Users\liora\Projects\coms3011a-lab1`) and re-point your terminal/IDE there — OneDrive + native Node modules is a known bad combination and will likely bite you again later (e.g. with Next.js's own SWC binaries).
+
+Run the clean reinstall first and paste what happens.
+
+#### **User** (7/30/2026, 9:20:31 PM):
+ npm run dev
+> coms3011a-lab1@0.1.0 dev
+> next dev
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.68.102:3000
+✓ Ready in 1020ms
+○ Compiling / ...
+⨯ Error: Cannot find module 'better-sqlite3'
+    at <unknown> (C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\.next\dev\server\chunks\ssr\[root-of-the-server]__0432qon._.js:34:15)
+    at module evaluation (C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\.next\dev\server\chunks\ssr\[root-of-the-server]__0432qon._.js:37:3)
+    at module evaluation (OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\src\app\page.js:1:1)
+    at module evaluation (C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\.next\dev\server\chunks\ssr\[root-of-the-server]__0432qon._.js:201:47)
+> 1 | import db from '@/lib/db';
+    | ^
+  2 | console.log(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all());
+  3 | import Image from "next/image";
+  4 | {
+  code: 'MODULE_NOT_FOUND'
+}
+⨯ Error: Cannot find module 'better-sqlite3'
+    at <unknown> (C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\.next\dev\server\chunks\ssr\[root-of-the-server]__0432qon._.js:34:15)
+    at module evaluation (C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\.next\dev\server\chunks\ssr\[root-of-the-server]__0432qon._.js:37:3)
+    at module evaluation (OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\src\app\page.js:1:1)
+    at module evaluation (C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\.next\dev\server\chunks\ssr\[root-of-the-server]__0432qon._.js:201:47)
+> 1 | import db from '@/lib/db';
+    | ^
+  2 | console.log(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all());
+  3 | import Image from "next/image";
+  4 | {
+  code: 'MODULE_NOT_FOUND',
+  page: '/'
+}
+○ Compiling /_error ...
+
+#### **Claude** (7/30/2026, 9:21:59 PM):
+ Good — so it's genuinely installed, which rules out the OneDrive/install theory. This is a different, more specific issue: **Turbopack is trying to bundle a native `.node` binary module**, which doesn't work — native modules need to be loaded via Node's regular `require`, not bundled into a JS chunk.
+
+## Fix: tell Next.js to treat it as an external server package
+
+Next.js has a config option exactly for this. Update `next.config.mjs`:
+
+```javascript
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  turbopack: {
+    root: __dirname,
+  },
+  serverExternalPackages: ['better-sqlite3'],
+};
+
+export default nextConfig;
+```
+
+`serverExternalPackages` tells Next.js: "don't try to bundle this into the server chunk, just `require()` it normally at runtime like plain Node would." That's exactly what a native binary module needs.
+
+## Restart and retest
+
+```powershell
+npm run dev
+```
+
+Then visit `http://localhost:3000` again and check the terminal for `[ { name: 'tasks' } ]`.
+
+If it still fails with the same `MODULE_NOT_FOUND`, the fallback is switching Turbopack off for dev temporarily (`next dev` without `--turbopack`, or check your `package.json` script), since Turbopack's native-module handling is newer/less mature than webpack's — but try the config fix first since it's the correct long-term solution either way.
+
+#### **User** (7/30/2026, 9:21:59 PM):
+ Test-Path node_modules\better-sqlite3
+True
+PS C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\COMS3011A-Lab1> Get-Content package.json | Select-String "sqlite"
+    "better-sqlite3": "^13.0.2",
+
+#### **Claude** (7/30/2026, 9:23:15 PM):
+ That's just the server starting — no errors this time, which is a good sign the config fix took. Now trigger the actual page load:
+
+Open your browser to:
+
+```
+http://localhost:3000
+```
+
+Then check your **terminal** (the same window running `npm run dev`) for either:
+
+- `[ { name: 'tasks' } ]` — success, the table exists
+- Or a new error — paste it if so
+
+Go ahead and load the page, then paste whatever appears in the terminal.
+
+#### **User** (7/30/2026, 9:23:15 PM):
+ npm run dev                                      
+> coms3011a-lab1@0.1.0 dev
+> next dev
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.68.102:3000
+✓ Ready in 987ms
+
+#### **Claude** (7/30/2026, 9:24:28 PM):
+ That error is character-for-character identical to before — including the same line numbers in the same compiled chunk file. That's a strong sign Turbopack served you a **stale cached bundle** rather than actually re-reading your updated `next.config.mjs`.
+
+## Step 1: Clear the Next.js build cache
+
+```powershell
+Remove-Item -Recurse -Force .next
+npm run dev
+```
+
+Then reload `http://localhost:3000` and check the terminal again.
+
+## Step 2: If it still fails, verify the native binary actually compiled
+
+`Test-Path node_modules\better-sqlite3` only confirms the *folder* exists — it doesn't confirm the compiled `.node` binary is inside it. Check:
+
+```powershell
+Get-ChildItem node_modules\better-sqlite3\build\Release
+```
+
+You're looking for a file called `better_sqlite3.node`. If that folder is empty or doesn't exist, the native binary never compiled/downloaded, and that's your real problem — not Turbopack config at all.
+
+If it's missing, force a rebuild:
+
+```powershell
+npm rebuild better-sqlite3
+```
+
+Watch that command's output closely for errors — on Windows this step needs either a prebuilt binary download (usually automatic) or MSBuild/Visual Studio C++ tools if it has to compile from source.
+
+## Run both checks and paste results
+
+Specifically paste:
+1. Output after clearing `.next` and reloading
+2. Output of `Get-ChildItem node_modules\better-sqlite3\build\Release`
+
+That'll tell us definitively whether this is a stale-cache issue or a genuinely broken native install.
+
+#### **User** (7/30/2026, 9:24:28 PM):
+ ⨯ Error: Cannot find module 'better-sqlite3'
+    at <unknown> (C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\.next\dev\server\chunks\ssr\[root-of-the-server]__0432qon._.js:34:15)
+    at module evaluation (C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\.next\dev\server\chunks\ssr\[root-of-the-server]__0432qon._.js:37:3)
+    at module evaluation (OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\src\app\page.js:1:1)
+    at module evaluation (C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\.next\dev\server\chunks\ssr\[root-of-the-server]__0432qon._.js:201:47)
+> 1 | import db from '@/lib/db';
+    | ^
+  2 | console.log(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all());
+  3 | import Image from "next/image";
+  4 | {
+  code: 'MODULE_NOT_FOUND'
+}
+⨯ Error: Cannot find module 'better-sqlite3'
+    at <unknown> (C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\.next\dev\server\chunks\ssr\[root-of-the-server]__0432qon._.js:34:15)
+    at module evaluation (C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\.next\dev\server\chunks\ssr\[root-of-the-server]__0432qon._.js:37:3)
+    at module evaluation (OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\src\app\page.js:1:1)
+    at module evaluation (C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1\.next\dev\server\chunks\ssr\[root-of-the-server]__0432qon._.js:201:47)
+> 1 | import db from '@/lib/db';
+    | ^
+  2 | console.log(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all());
+  3 | import Image from "next/image";
+  4 | {
+  code: 'MODULE_NOT_FOUND',
+  page: '/'
+}
+○ Compiling /_error ...
+ GET / 500 in 53s (next.js: 35.4s, application-code: 17.7s)
+PS C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\COMS3011A-Lab1> 
+                                 ^C
+PS C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\COMS3011A-Lab1> Test-Path node_modules\better-sqlite3
+True
+PS C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\COMS3011A-Lab1> Get-Content package.json | Select-String "sqlite"
+    "better-sqlite3": "^13.0.2",
+PS C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\COMS3011A-Lab1> npm run dev                                      
+> coms3011a-lab1@0.1.0 dev
+> next dev
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.68.102:3000
+✓ Ready in 987ms
+
+#### **Claude** (7/30/2026, 9:26:01 PM):
+ That's exactly what we wanted:
+
+```
+[ { name: 'tasks' }, { name: 'sqlite_sequence' } ]
+```
+
+The clean cache clear was the fix — it really was Turbopack serving a stale bundle. `tasks` confirms your schema initialized correctly. `sqlite_sequence` is just SQLite's own internal bookkeeping table for `AUTOINCREMENT` — nothing you created, totally normal, ignore it.
+
+The `vercel.svg` width/height warning is unrelated cosmetic noise from the default Next.js boilerplate image — safe to ignore, or delete that placeholder content later when you build your real UI.
+
+## Clean up before committing
+
+Remove the temporary debug line from `src\app\page.js`:
+
+```javascript
+import db from '@/lib/db';
+console.log(db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all());
+```
+
+Just delete that `console.log` line (keep the `import db` only if you're about to use it in the component — otherwise remove both lines entirely for now).
+
+## Commit this slice
+
+```powershell
+git add .
+git commit -m "Add SQLite connection with tasks table schema, fix Turbopack native module bundling
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+```
+
+That's a solid, honest commit message — it also documents the real problem you hit and fixed, which is good material for your AI-usage reflection later (you didn't just accept AI output blindly; you caught a stale-cache issue and a Turbopack-specific bundling problem that needed a non-obvious fix).
+
+---
+
+Next natural slice: the **create-task API route + form**. Want to build the API route first (`POST /api/tasks`), or start with the form UI and wire it up after?
+
+#### **User** (7/30/2026, 9:26:01 PM):
+ npm run dev                      
+> coms3011a-lab1@0.1.0 dev
+> next dev
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.68.102:3000
+✓ Ready in 1006ms
+[ { name: 'tasks' }, { name: 'sqlite_sequence' } ]
+ GET / 200 in 3.8s (next.js: 3.3s, application-code: 476ms)
+[browser] Image with src "http://localhost:3000/vercel.svg" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio. (file://C:/Users/liora/OneDrive/Documentos/GitHub/SDP/Lab 1/coms3011a-lab1/.next/dev/static/chunks/node_modules_next_dist_1ybzpk2._.js:2489:13)
+ GET / 200 in 98ms (next.js: 11ms, application-code: 86ms)
+
+#### **Claude** (7/30/2026, 9:27:49 PM):
+ Those are just warnings, not errors — totally harmless. Git for Windows defaults to auto-converting line endings (LF → CRLF) on checkout so files display correctly in Windows editors like Notepad. This is standard, expected behavior on Windows and won't affect your commit, your code running, or your marks.
+
+## You can safely proceed
+
+```powershell
+git commit -m "Add SQLite connection with tasks table schema, fix Turbopack native module bundling
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+```
+
+## Optional: silence the warnings permanently (not required)
+
+If they bug you, you can tell Git to stop converting line endings:
+
+```powershell
+git config --global core.autocrlf false
+```
+
+But this is genuinely optional — don't bother with it now if you just want to keep moving. It has zero effect on your app or your grade.
+
+## Confirm the commit landed
+
+```powershell
+git log --oneline -5
+```
+
+You should see your two commits now: the Next.js scaffold and this SQLite one.
+
+---
+
+Ready for the next slice — the **create-task API route + form**. Want the API route first, or the form UI first?
+
+#### **User** (7/30/2026, 9:27:49 PM):
+ git add .
+warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'next.config.mjs', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'package-lock.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'package.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/app/page.js', LF will be replaced by CRLF the next time Git touches it
+
+#### **Claude** (7/30/2026, 9:30:08 PM):
+ Good catch — yes, you should push. Committing only saves the snapshot locally; it won't show up on GitHub (or count toward your commit history the marker sees) until you push it.
+
+```powershell
+git push origin main
+```
+
+If this is your first push from this machine/repo, you might hit an authentication prompt (GitHub no longer accepts plain passwords — it'll want a personal access token or open a browser login via GCM). If that happens, paste whatever prompt or error you get.
+
+## Worth doing now: check your branch name
+
+Some newer Git/GitHub setups default to `main`, but some local repos still init as `master`. Confirm before pushing:
+
+```powershell
+git branch
+```
+
+If it shows `master` instead of `main`, use:
+
+```powershell
+git push origin master
+```
+
+Run `git branch` first, then push, and paste the output either way.
+
+#### **User** (7/30/2026, 9:30:08 PM):
+ must I not push to origin main
+
+#### **Claude** (7/31/2026, 1:23:25 PM):
+ Next up: the **create-task** flow — this is your first real feature slice (API route + form + list view). Let's build it in this order: API route → form → list view, each as its own small commit.
+
+## Step 1: Create the API route
+
+```powershell
+mkdir src\app\api\tasks
+New-Item -ItemType File -Path src\app\api\tasks\route.js
+```
+
+`src\app\api\tasks\route.js`:
+
+```javascript
+import db from '@/lib/db';
+import { NextResponse } from 'next/server';
+
+// GET /api/tasks - list all non-archived tasks
+export async function GET() {
+  const tasks = db.prepare(`
+    SELECT * FROM tasks WHERE archived_at IS NULL ORDER BY due_date ASC
+  `).all();
+
+  return NextResponse.json(tasks);
+}
+
+// POST /api/tasks - create a new task
+export async function POST(request) {
+  const body = await request.json();
+  const { title, description, due_date, topic } = body;
+
+  if (!title || !topic) {
+    return NextResponse.json(
+      { error: 'title and topic are required' },
+      { status: 400 }
+    );
+  }
+
+  const result = db.prepare(`
+    INSERT INTO tasks (title, description, due_date, topic)
+    VALUES (?, ?, ?, ?)
+  `).run(title, description || null, due_date || null, topic);
+
+  const newTask = db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid);
+
+  return NextResponse.json(newTask, { status: 201 });
+}
+```
+
+## Step 2: Quick manual test before building the UI
+
+With `npm run dev` running, test the API directly using PowerShell:
+
+```powershell
+Invoke-RestMethod -Uri http://localhost:3000/api/tasks -Method Post -Body (@{
+  title = "Write lab report"
+  description = "Finish COMS3011A Lab 1 writeup"
+  due_date = "2026-08-04"
+  topic = "SDP"
+} | ConvertTo-Json) -ContentType "application/json"
+```
+
+You should get back the created task object with an `id`. Then confirm GET works:
+
+```powershell
+Invoke-RestMethod -Uri http://localhost:3000/api/tasks
+```
+
+Paste what comes back from both — once the API's confirmed working, we'll build the form component that calls it.
+
+#### **User** (7/31/2026, 1:23:25 PM):
+ after commiting what do we do next
+
+#### **Claude** (7/31/2026, 1:29:22 PM):
+ Both work exactly as expected — POST created the task with `status: todo` and `archived_at` empty (defaults working correctly), and GET returned it back. The API layer is solid.
+
+## Commit this slice
+
+```powershell
+git add .
+git commit -m "Add API routes for creating and listing tasks
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+## Step 3: Build the create-task form
+
+Let's replace the default boilerplate homepage with a real form + list. Open `src\app\page.js` and replace its entire contents with:
+
+```javascript
+'use client';
+
+import { useState, useEffect } from 'react';
+
+export default function Home() {
+  const [tasks, setTasks] = useState([]);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [topic, setTopic] = useState('');
+
+  const fetchTasks = async () => {
+    const res = await fetch('/api/tasks');
+    const data = await res.json();
+    setTasks(data);
+  };
+
+  useEffect(() => {
+    fetchTasks();
+  }, []);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await fetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, description, due_date: dueDate, topic }),
+    });
+    setTitle('');
+    setDescription('');
+    setDueDate('');
+    setTopic('');
+    fetchTasks();
+  };
+
+  return (
+    <main className="max-w-2xl mx-auto p-8">
+      <h1 className="text-2xl font-bold mb-6">My Tasks</h1>
+
+      <form onSubmit={handleSubmit} className="space-y-3 mb-8 border-b pb-6">
+        <input
+          className="w-full border rounded p-2"
+          placeholder="Title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          required
+        />
+        <textarea
+          className="w-full border rounded p-2"
+          placeholder="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+        <div className="flex gap-3">
+          <input
+            type="date"
+            className="border rounded p-2 flex-1"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+          />
+          <input
+            className="border rounded p-2 flex-1"
+            placeholder="Topic"
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            required
+          />
+        </div>
+        <button
+          type="submit"
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        >
+          Add Task
+        </button>
+      </form>
+
+      <ul className="space-y-2">
+        {tasks.map((task) => (
+          <li key={task.id} className="border rounded p-3">
+            <div className="font-semibold">{task.title}</div>
+            <div className="text-sm text-gray-600">{task.description}</div>
+            <div className="text-xs text-gray-400 mt-1">
+              {task.topic} · {task.status} · due {task.due_date || 'no date'}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </main>
+  );
+}
+```
+
+This gives you: a form that creates tasks via your API, and a list that re-fetches and displays them — your first end-to-end vertical slice (DB → API → UI).
+
+Run `npm run dev`, load `http://localhost:3000`, and try adding a task through the actual form (not PowerShell this time). Confirm it appears in the list and — importantly — reload the page to confirm it **persists** (survives a refresh, proving it's really hitting SQLite and not just local state).
+
+Paste back what happens.
+
+#### **User** (7/31/2026, 1:29:22 PM):
+ id          : 1
+title       : Write lab report
+description : Finish COMS3011A Lab 1 
+              writeup
+due_date    : 2026-08-04
+topic       : SDP
+status      : todo
+archived_at : 
+created_at  : 2026-07-31 11:28:08
+updated_at  : 2026-07-31 11:28:08   Invoke-RestMethod -Uri http://localhost:3000/api/tasks
+id          : 1
+title       : Write lab report
+description : Finish COMS3011A Lab 1 writeup
+due_date    : 2026-08-04
+topic       : SDP
+status      : todo
+archived_at : 
+created_at  : 2026-07-31 11:28:08
+updated_at  : 2026-07-31 11:28:08
+
+#### **Claude** (7/31/2026, 1:44:06 PM):
+ That's OneDrive syncing the folder deletions from earlier — when you ran `Remove-Item -Recurse -Force node_modules` and `Remove-Item -Recurse -Force .next`, those folders contained hundreds of files each (dependencies + build cache). OneDrive tracks and syncs *everything* in the folder, including `node_modules`/`.next`, not just what Git tracks — so it's now asking to confirm a mass deletion in the cloud too.
+
+## Is it safe to delete?
+
+Yes — `node_modules` and `.next` are exactly the kind of folders that should never be permanently stored anywhere:
+- `node_modules` — pure dependencies, fully regenerable with `npm install`
+- `.next` — Next.js's build cache, fully regenerable with `npm run dev`
+
+Both are already (or should be) in your `.gitignore`, meaning Git never tracked them either. Losing them from OneDrive costs you nothing — they're not your work, just downloaded/generated scaffolding.
+
+**Click "Delete all items."**
+
+## Fix this recurring annoyance for good
+
+Since your whole project sits inside OneDrive, it'll keep trying to sync `node_modules` (which can be 100,000+ files for a Next.js project) every time it changes — slow and pointless. Tell OneDrive to ignore these folders:
+
+1. Right-click the OneDrive icon in your system tray → **Settings**
+2. Go to **Sync and backup** → **Manage backup** (or "Choose folders" depending on your OneDrive version)
+3. Under your project folder, exclude `node_modules` and `.next` from sync
+
+Alternatively, and more robustly long-term: move the whole project out of OneDrive to somewhere like `C:\Projects\coms3011a-lab1` and just make sure your actual work is backed up via **Git pushes to GitHub** instead — that's the backup that actually matters for this course, and it avoids OneDrive fighting with Node's dependency folders entirely.
+
+Go ahead and click **Delete all items**, then let me know once you're ready to test the form in the browser.
+
+#### **User** (7/31/2026, 1:44:06 PM):
+ before I do this, this keeps popping up for me
+
+#### **Claude** (7/31/2026, 1:53:10 PM):
+ This is exactly the same root cause as before, just this time it's Turbopack's *own* on-disk cache database that got corrupted mid-sync — you clicked through the OneDrive delete/sync while `.next` was regenerating, and OneDrive likely partially synced/locked one of the `.sst` cache files while Turbopack was writing it.
+
+## Fix: clear the cache again
+
+```powershell
+Remove-Item -Recurse -Force .next
+npm run dev
+```
+
+Then visit `http://localhost:3000`.
+
+## This will keep happening until OneDrive stops touching `.next`
+
+This is the second time OneDrive syncing has corrupted a build folder mid-write. The permanent fix is to stop OneDrive from touching `node_modules` and `.next` at all, rather than cleaning up after each corruption.
+
+**Easiest permanent fix — exclude these folders from OneDrive:**
+
+```powershell
+attrib +U -P .next /S /D
+```
+
+Actually the more reliable way on modern OneDrive is via a `.next`/`node_modules` exclusion in OneDrive's settings UI, not attrib flags. Do this:
+
+1. Right-click the **OneDrive cloud icon** in your system tray
+2. **Settings** → **Sync and backup** → **Manage backup** (or "Choose folders," depending on version)
+3. Look for an option like **"Exclude these folders"** or set the whole project folder to **local-only / never sync subfolders** — if OneDrive's UI doesn't offer per-subfolder exclusion cleanly, the more robust option below is better anyway.
+
+**More reliable option — move the project out of OneDrive entirely:**
+
+```powershell
+robocopy "C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1" "C:\Projects\coms3011a-lab1" /E /XD node_modules .next .git
+cd C:\Projects\coms3011a-lab1
+```
+
+Wait — that excludes `.git` too, which you need. Better:
+
+```powershell
+robocopy "C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\coms3011a-lab1" "C:\Projects\coms3011a-lab1" /E /XD node_modules .next
+cd C:\Projects\coms3011a-lab1
+npm install
+```
+
+This copies everything including `.git` (so your history and remote are intact) but skips the two folders causing the fights. Your actual backup is GitHub via `git push` anyway — OneDrive syncing your Node project was never adding real safety, just risk.
+
+Try the quick `.next` cache clear first and confirm the app loads — then decide if you want to do the full move now or later.
+
+#### **Claude** (7/31/2026, 1:58:28 PM):
+ Good — clean start this time, no panic errors. It's currently compiling the `/` route (first request after a cache clear always takes a bit longer since Turbopack has to rebuild from scratch).
+
+## Give it a moment, then check the browser
+
+Open `http://localhost:3000` and wait a few seconds for the first compile to finish. Watch the terminal for either:
+
+- `✓ Compiled / in Xs` followed by `[ { name: 'tasks' }, { name: 'sqlite_sequence' } ]` — success
+- Or another panic/error — paste it if so
+
+## Once it loads
+
+Try the actual form in the browser:
+1. Fill in Title, Description, Due Date, Topic
+2. Click **Add Task**
+3. Confirm it appears in the list below the form
+4. **Refresh the page** (F5) — confirm the task is still there (proves it's really persisted to SQLite, not just sitting in React state)
+
+Paste what you see — either the terminal output, a screenshot of the page, or both.
+
+#### **User** (7/31/2026, 1:58:28 PM):
+ npm run dev                      
+> coms3011a-lab1@0.1.0 dev
+> next dev
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.2.0.2:3000
+✓ Ready in 1339ms
+○ Compiling / ...
+
+#### **Claude** (7/31/2026, 2:00:42 PM):
+ That's your full first vertical slice working end-to-end: form → API → SQLite → list, and — importantly — the terminal shows multiple `GET /` calls after the initial `POST`, which means you refreshed the page and both tasks stayed put. That's real persistence confirmed, not just React state.
+
+## Commit this slice
+
+```powershell
+git add .
+git commit -m "Add create-task form and list view, wire up to API
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+You now have a genuinely working commit history: scaffold → SQLite schema → API routes → form/list UI. That's 4 solid, incremental commits — already meaningfully progressing toward your 6+ target, each with a real reason for existing (good material for the commit-history rubric line).
+
+## What's next
+
+Looking at your brief, the remaining core features are:
+1. **Edit a task** (update title/description/due date/topic/status)
+2. **Archive a task** (not delete — sets `archived_at`)
+3. **Sort by topic / status / due date**
+4. **Overdue visual flag** (derived from `due_date < now() AND status != complete`, not a stored field)
+
+Want to tackle **edit** next, or knock out **archive** first since it's a smaller, self-contained slice?
+
+#### **User** (7/31/2026, 2:00:42 PM):
+ npm run dev                      
+> coms3011a-lab1@0.1.0 dev
+> next dev
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.2.0.2:3000
+✓ Ready in 1339ms
+○ Compiling / ...
+ GET / 200 in 5.4s (next.js: 5.1s, application-code: 357ms)
+ GET /api/tasks 200 in 594ms (next.js: 548ms, application-code: 46ms)
+ POST /api/tasks 201 in 33ms (next.js: 10ms, application-code: 23ms)
+ GET /api/tasks 200 in 24ms (next.js: 8ms, application-code: 17ms)
+ GET / 200 in 110ms (next.js: 15ms, application-code: 96ms)
+ GET /api/tasks 200 in 25ms (next.js: 9ms, application-code: 16ms)
+ GET / 200 in 149ms (next.js: 12ms, application-code: 137ms)
+ GET /api/tasks 200 in 30ms (next.js: 12ms, application-code: 17ms)
+ GET / 200 in 112ms (next.js: 15ms, application-code: 97ms)
+ GET /api/tasks 200 in 23ms (next.js: 9ms, application-code: 14ms)
+
+#### **Claude** (7/31/2026, 2:05:23 PM):
+ Good pick — self-contained and quick. Let's add an archive endpoint plus a button to trigger it.
+
+## Step 1: Create a dynamic route for individual tasks
+
+```powershell
+mkdir src\app\api\tasks\[id]
+New-Item -ItemType File -Path "src\app\api\tasks\[id]\route.js"
+```
+
+`src\app\api\tasks\[id]\route.js`:
+
+```javascript
+import db from '@/lib/db';
+import { NextResponse } from 'next/server';
+
+// PATCH /api/tasks/:id - partial update (archive, status change, edits)
+export async function PATCH(request, { params }) {
+  const { id } = await params;
+  const body = await request.json();
+
+  const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  if (!existing) {
+    return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+  }
+
+  // Archive action: set archived_at to now
+  if (body.archive === true) {
+    db.prepare(`
+      UPDATE tasks SET archived_at = datetime('now'), updated_at = datetime('now')
+      WHERE id = ?
+    `).run(id);
+  }
+
+  // Unarchive action: clear archived_at
+  if (body.archive === false) {
+    db.prepare(`
+      UPDATE tasks SET archived_at = NULL, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(id);
+  }
+
+  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  return NextResponse.json(updated);
+}
+```
+
+This is deliberately built as a general-purpose `PATCH` so **edit** (next feature) can reuse the same route later — just extending the `body` handling rather than adding a whole new endpoint.
+
+## Step 2: Add an Archive button to the list in `page.js`
+
+Add an `archiveTask` function and a button per list item:
+
+```javascript
+const archiveTask = async (id) => {
+  await fetch(`/api/tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ archive: true }),
+  });
+  fetchTasks();
+};
+```
+
+Update the `<li>` in your list to include the button:
+
+```javascript
+<ul className="space-y-2">
+  {tasks.map((task) => (
+    <li key={task.id} className="border rounded p-3 flex justify-between items-start">
+      <div>
+        <div className="font-semibold">{task.title}</div>
+        <div className="text-sm text-gray-600">{task.description}</div>
+        <div className="text-xs text-gray-400 mt-1">
+          {task.topic} · {task.status} · due {task.due_date || 'no date'}
+        </div>
+      </div>
+      <button
+        onClick={() => archiveTask(task.id)}
+        className="text-sm text-red-600 hover:text-red-800 ml-4 shrink-0"
+      >
+        Archive
+      </button>
+    </li>
+  ))}
+</ul>
+```
+
+## Step 3: Quick manual test before touching the browser
+
+```powershell
+Invoke-RestMethod -Uri http://localhost:3000/api/tasks/1 -Method Patch -Body (@{
+  archive = $true
+} | ConvertTo-Json) -ContentType "application/json"
+```
+
+Then confirm it disappears from the main list:
+
+```powershell
+Invoke-RestMethod -Uri http://localhost:3000/api/tasks
+```
+
+Task 1 ("Write lab report") should be **gone** from the results, since your `GET /api/tasks` route already filters `WHERE archived_at IS NULL`.
+
+Run those two, paste the output, and then we'll test the button in the browser.
+
+#### **User** (7/31/2026, 2:05:23 PM):
+ lets do archive
+
+#### **Claude** (7/31/2026, 2:15:03 PM):
+ "Unable to connect" just means nothing's listening on port 3000 right now — your dev server isn't running in this terminal (you probably closed it, or this is a separate PowerShell tab from the one running `npm run dev`).
+
+## Check if it's running somewhere
+
+```powershell
+Get-Process -Name node -ErrorAction SilentlyContinue
+```
+
+If that shows nothing, the server isn't running at all — start it:
+
+```powershell
+npm run dev
+```
+
+**Important**: keep that terminal window open and running. Open a **second** PowerShell tab/window to run your `Invoke-RestMethod` test commands, so the dev server keeps running in the first one while you test in the second.
+
+## If it is running but on a different port
+
+Check the terminal where `npm run dev` is running — earlier we saw it grab port 3001 once when 3000 was in use. Confirm which port it's actually on before retesting, and adjust the URL accordingly if it's not 3000.
+
+Start the server (in its own terminal), open a second terminal for testing, and retry the PATCH request.
+
+#### **User** (7/31/2026, 2:15:03 PM):
+ Invoke-RestMethod -Uri http://localhost:3000/api/tasks/1 -Method Patch -Body (@{
+>>   archive = $true
+>> } | ConvertTo-Json) -ContentType "application/json"
+Invoke-RestMethod : Unable to 
+connect to the remote server
+At line:1 char:1
++ Invoke-RestMethod -Uri 
+http://localhost:3000/api/tasks/1 
+-Method Patc ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpe 
+   cified: (:) [Invoke-RestMethod],  
+   WebException
+    + FullyQualifiedErrorId : System 
+   .Net.WebException,Microsoft.Powe  
+  rShell.Commands.InvokeRestMethod   
+ Command
+ 
+PS C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\COMS3011A-Lab1> Invoke-RestMethod -Uri http://localhost:3000/api/tasks
+Invoke-RestMethod : Unable to 
+connect to the remote server
+At line:1 char:1
++ Invoke-RestMethod -Uri 
+http://localhost:3000/api/tasks
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : Invali 
+   dOperation: (System.Net.HttpWebR  
+  equest:HttpWebRequest) [Invoke-R   
+ estMethod], WebException
+    + FullyQualifiedErrorId : WebCmd 
+   letWebResponseException,Microsof  
+  t.PowerShell.Commands.InvokeRest   
+ MethodCommand
+
+#### **Claude** (7/31/2026, 2:16:19 PM):
+ Exactly right on both counts:
+
+- **PATCH** set `archived_at: 2026-07-31 12:15:53` on task 1 — archived, not deleted, timestamp recorded.
+- **GET /api/tasks** now only returns task 2 — task 1 is correctly filtered out by the `WHERE archived_at IS NULL` clause, but it's still sitting in the database (nothing was destroyed).
+
+That's the archive feature working exactly per the rubric's requirement (flag/timestamp, not delete, not moved elsewhere).
+
+## Now test the button in the browser
+
+Refresh `http://localhost:3000` and confirm:
+1. You see **"Complete AAA lab"** in the list
+2. **"Write lab report"** is gone from the visible list (matches what the API just proved)
+3. Click **Archive** on "Complete AAA lab" — confirm it disappears from the list too, live, without needing a manual refresh
+
+Paste a screenshot or describe what happens.
+
+#### **User** (7/31/2026, 2:16:19 PM):
+ Invoke-RestMethod -Uri http://localhost:3000/api/tasks/1 -Method Patch -Body (@{
+>>   archive = $true
+>> } | ConvertTo-Json) -ContentType "application/json"
+id          : 1
+title       : Write lab report
+description : Finish COMS3011A Lab 1 
+              writeup
+due_date    : 2026-08-04
+topic       : SDP
+status      : todo
+archived_at : 2026-07-31 12:15:53
+created_at  : 2026-07-31 11:28:08
+updated_at  : 2026-07-31 12:15:53
+PS C:\Users\liora\OneDrive\Documentos\GitHub\SDP\Lab 1\COMS3011A-Lab1> Invoke-RestMethod -Uri http://localhost:3000/api/tasks
+id          : 2
+title       : Complete AAA lab
+description : BFS for puzzle
+due_date    : 2026-08-05
+topic       : Lab
+status      : todo
+archived_at : 
+created_at  : 2026-07-31 11:59:57
+updated_at  : 2026-07-31 11:59:57
+
+#### **Claude** (7/31/2026, 2:17:58 PM):
+ That's a clean full cycle: PATCH task 1 (from your API test), page load, then PATCH task 2 (your button click in the browser), followed by an immediate `GET /api/tasks` refetch — meaning the archive button worked and the list re-rendered live without a manual refresh. Both tasks are now archived and correctly hidden from view.
+
+## Commit this slice
+
+```powershell
+git add .
+git commit -m "Add archive endpoint and UI button, keeping archived tasks in DB with timestamp
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+## One thing worth adding before moving on: a way to *see* archived tasks
+
+Right now archived tasks vanish with no way to view or unarchive them through the UI — only via a manual PATCH. Since your `archived_at` design already supports unarchiving, it'd be worth exposing that, even minimally (e.g. a toggle or a small "Show archived" link that fetches a separate view).
+
+Want me to add a simple "Show archived" toggle now, or leave that for later and move on to **sorting** or **editing** next?
+
+#### **User** (7/31/2026, 2:17:58 PM):
+ npm run dev
+> coms3011a-lab1@0.1.0 dev
+> next dev
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.2.0.2:3000
+✓ Ready in 1294ms
+ PATCH /api/tasks/1 200 in 2.1s (next.js: 2.1s, application-code: 66ms)
+ GET /api/tasks 200 in 128ms (next.js: 94ms, application-code: 34ms)
+ GET / 200 in 599ms (next.js: 259ms, application-code: 339ms)
+ GET /api/tasks 200 in 25ms (next.js: 8ms, application-code: 16ms)
+ PATCH /api/tasks/2 200 in 41ms (next.js: 22ms, application-code: 19ms)
+ GET /api/tasks 200 in 25ms (next.js: 9ms, application-code: 16ms)
+
+#### **Claude** (7/31/2026, 2:18:39 PM):
+ Let's add that toggle. Two small pieces: an API change to optionally include archived tasks, and a UI toggle to switch views.
+
+## Step 1: Update the GET route to support an `archived` query param
+
+`src\app\api\tasks\route.js` — update just the `GET` function:
+
+```javascript
+// GET /api/tasks - list tasks (default: non-archived only)
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const showArchived = searchParams.get('archived') === 'true';
+
+  const tasks = showArchived
+    ? db.prepare(`SELECT * FROM tasks WHERE archived_at IS NOT NULL ORDER BY due_date ASC`).all()
+    : db.prepare(`SELECT * FROM tasks WHERE archived_at IS NULL ORDER BY due_date ASC`).all();
+
+  return NextResponse.json(tasks);
+}
+```
+
+Leave `POST` in that same file untouched.
+
+## Step 2: Add toggle state and an unarchive function in `page.js`
+
+Add a new state variable near your other `useState` calls:
+
+```javascript
+const [showArchived, setShowArchived] = useState(false);
+```
+
+Update `fetchTasks` to respect it:
+
+```javascript
+const fetchTasks = async (archived = showArchived) => {
+  const res = await fetch(`/api/tasks?archived=${archived}`);
+  const data = await res.json();
+  setTasks(data);
+};
+```
+
+Update the `useEffect` to refetch whenever `showArchived` changes:
+
+```javascript
+useEffect(() => {
+  fetchTasks(showArchived);
+}, [showArchived]);
+```
+
+Add an `unarchiveTask` function next to `archiveTask`:
+
+```javascript
+const unarchiveTask = async (id) => {
+  await fetch(`/api/tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ archive: false }),
+  });
+  fetchTasks(showArchived);
+};
+```
+
+Make sure `archiveTask` also passes the current view along so it refetches correctly:
+
+```javascript
+const archiveTask = async (id) => {
+  await fetch(`/api/tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ archive: true }),
+  });
+  fetchTasks(showArchived);
+};
+```
+
+## Step 3: Add the toggle button and conditional Archive/Unarchive button in the JSX
+
+Just above your `<ul>`, add a toggle:
+
+```javascript
+<div className="flex justify-between items-center mb-3">
+  <h2 className="text-lg font-semibold">
+    {showArchived ? 'Archived Tasks' : 'Active Tasks'}
+  </h2>
+  <button
+    onClick={() => setShowArchived(!showArchived)}
+    className="text-sm text-blue-600 hover:text-blue-800"
+  >
+    {showArchived ? 'Show active tasks' : 'Show archived tasks'}
+  </button>
+</div>
+```
+
+Update the list item's button to switch based on view:
+
+```javascript
+<button
+  onClick={() => (showArchived ? unarchiveTask(task.id) : archiveTask(task.id))}
+  className={`text-sm ml-4 shrink-0 ${
+    showArchived ? 'text-green-600 hover:text-green-800' : 'text-red-600 hover:text-red-800'
+  }`}
+>
+  {showArchived ? 'Unarchive' : 'Archive'}
+</button>
+```
+
+## Step 4: Test it
+
+Reload the browser. You should now see "Active Tasks" (empty, since you archived both earlier). Click **"Show archived tasks"** — both should appear with an **Unarchive** button. Click Unarchive on one, then switch back to "Show active tasks" and confirm it reappeared there.
+
+Paste what happens or a screenshot, then we'll commit this slice.
+
+#### **User** (7/31/2026, 2:18:39 PM):
+ yes lets
+
+#### **Claude** (7/31/2026, 2:35:42 PM):
+ Close, but two placement bugs snuck in — both easy fixes.
+
+## Bug 1: The archived-toggle header got placed inside the `<form>`
+
+It's currently sitting between the Topic input and the "Add Task" button, inside your `<form onSubmit={handleSubmit}>`. That means clicking "Show archived tasks" is inside a form — depending on button type handling this risks accidentally triggering form submission behavior, and semantically it doesn't belong there at all — it's about the list view, not the create-task form.
+
+**Fix**: move that whole `<div className="flex justify-between...">...</div>` block to *after* the closing `</form>` tag, right before `<ul>`.
+
+## Bug 2: You have two Archive buttons now, not one
+
+Look at your `<li>` — you kept the original:
+
+```javascript
+<button
+  onClick={() => archiveTask(task.id)}
+  className="text-sm text-red-600 hover:text-red-800 ml-4 shrink-0"
+>
+  Archive
+</button>
+```
+
+**and** added the new conditional one right after it. Delete the first one — only the conditional Archive/Unarchive button should remain.
+
+## Corrected structure
+
+```javascript
+return (
+  <main className="max-w-2xl mx-auto p-8">
+    <h1 className="text-2xl font-bold mb-6">My Tasks</h1>
+
+    <form onSubmit={handleSubmit} className="space-y-3 mb-8 border-b pb-6">
+      <input className="w-full border rounded p-2" placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+      <textarea className="w-full border rounded p-2" placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+      <div className="flex gap-3">
+        <input type="date" className="border rounded p-2 flex-1" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        <input className="border rounded p-2 flex-1" placeholder="Topic" value={topic} onChange={(e) => setTopic(e.target.value)} required />
+      </div>
+      <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+        Add Task
+      </button>
+    </form>
+
+    <div className="flex justify-between items-center mb-3">
+      <h2 className="text-lg font-semibold">
+        {showArchived ? 'Archived Tasks' : 'Active Tasks'}
+      </h2>
+      <button
+        onClick={() => setShowArchived(!showArchived)}
+        className="text-sm text-blue-600 hover:text-blue-800"
+      >
+        {showArchived ? 'Show active tasks' : 'Show archived tasks'}
+      </button>
+    </div>
+
+    <ul className="space-y-2">
+      {tasks.map((task) => (
+        <li key={task.id} className="border rounded p-3 flex justify-between items-start">
+          <div>
+            <div className="font-semibold">{task.title}</div>
+            <div className="text-sm text-gray-600">{task.description}</div>
+            <div className="text-xs text-gray-400 mt-1">
+              {task.topic} · {task.status} · due {task.due_date || 'no date'}
+            </div>
+          </div>
+          <button
+            onClick={() => (showArchived ? unarchiveTask(task.id) : archiveTask(task.id))}
+            className={`text-sm ml-4 shrink-0 ${
+              showArchived ? 'text-green-600 hover:text-green-800' : 'text-red-600 hover:text-red-800'
+            }`}
+          >
+            {showArchived ? 'Unarchive' : 'Archive'}
+          </button>
+        </li>
+      ))}
+    </ul>
+  </main>
+);
+```
+
+Everything above the `return` (state, `fetchTasks`, `handleSubmit`, `archiveTask`, `unarchiveTask`) you already have correct — no changes needed there.
+
+Make those two structural fixes, save, and test in the browser.
+
+#### **User** (7/31/2026, 2:35:42 PM):
+ is this correct before I test it:
+
+#### **Claude** (7/31/2026, 2:37:47 PM):
+ That error means there's a brace mismatch somewhere in the file — likely leftover from copy-pasting only part of the replacement and not fully removing old code around it. Since the error points at the very end of the file, it's often caused by something *earlier* not being closed properly (an extra open brace, or a stray leftover fragment).
+
+## Let's see the whole file to spot it
+
+```powershell
+Get-Content src\app\page.js
+```
+
+Paste the full output here — rather than guessing blindly at what's mismatched, I'll check every brace pairing (component function → `return` → JSX → each function above it) against what you have and tell you exactly which one is missing or extra.
+
+#### **User** (7/31/2026, 2:37:47 PM):
+ npm run dev                                
+                                      
+> coms3011a-lab1@0.1.0 dev            
+> next dev            
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.2.0.2:3000
+✓ Ready in 1437ms
+⨯ ./src/app/page.js:105:3
+Expected '}', got '<eof>'
+  103 |     </ul>
+  104 |   </main>
+> 105 | );
+      |   ^
+Parsing ecmascript source code failed
+
+#### **Claude** (7/31/2026, 2:38:44 PM):
+ Found it — the file is missing its very last closing brace. You have:
+
+```javascript
+export default function Home() {
+  ...
+  return (
+    ...
+  );
+```
+
+But nothing after `);` to close the `Home` function itself. Every `{` needs a matching `}`, and the outer function's closing brace got dropped when copying — that's exactly what "Expected `}`, got `<eof>`" means: the parser hit end-of-file still waiting for one more `}`.
+
+## Fix: add the missing closing brace
+
+Open `src\app\page.js`, go to the very last line, and add `}` after `);`:
+
+```javascript
+    </ul>
+  </main>
+);
+}
+```
+
+## Second, smaller issue while we're in there
+
+Your due-date line shows garbled characters:
+
+```javascript
+{task.topic} Â· {task.status} Â· due {task.due_date || 'no date'}
+```
+
+`Â·` instead of `·` is a classic UTF-8/encoding mismatch — the middle-dot character got mis-saved, likely by whatever editor or clipboard step touched this file. Replace both instances of `Â·` with a plain `·` (or just retype it, or use a plain hyphen `-` to sidestep encoding issues entirely):
+
+```javascript
+{task.topic} · {task.status} · due {task.due_date || 'no date'}
+```
+
+If retyping `·` is annoying, check your editor's file encoding is set to **UTF-8** (VS Code: bottom-right status bar shows the encoding — click it, choose "Save with Encoding" → UTF-8) to prevent this recurring.
+
+## Save and retest
+
+```powershell
+npm run dev
+```
+
+Reload the browser and try the flow again — add a task, archive it, toggle to "Show archived tasks," unarchive it, toggle back. Paste what happens.
+
+#### **User** (7/31/2026, 2:38:44 PM):
+ Get-Content src\app\page.js
+'use client';
+import { useState, useEffect } from 'react';
+export default function Home() {
+  const [tasks, setTasks] = useState([]);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [topic, setTopic] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
+  const fetchTasks = async (archived = showArchived) => {
+    const res = await fetch(`/api/tasks?archived=${archived}`);
+    const data = await res.json();
+    setTasks(data);
+  };
+  useEffect(() => {
+  fetchTasks(showArchived);
+  }, [showArchived]);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    await fetch('/api/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, description, due_date: dueDate, topic }),
+    });
+    setTitle('');
+    setDescription('');
+    setDueDate('');
+    setTopic('');
+    fetchTasks();
+  };
+  const archiveTask = async (id) => {
+  await fetch(`/api/tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ archive: true }),
+  });
+  fetchTasks(showArchived);
+  };
+  const unarchiveTask = async (id) => {
+  await fetch(`/api/tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ archive: false }),
+  });
+  fetchTasks(showArchived);
+  };
+  return (
+  <main className="max-w-2xl mx-auto p-8">
+    <h1 className="text-2xl font-bold mb-6">My Tasks</h1>
+    <form onSubmit={handleSubmit} className="space-y-3 mb-8 border-b pb-6">
+      <input className="w-full border rounded p-2" placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
+      <textarea className="w-full border rounded p-2" placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+      <div className="flex gap-3">
+        <input type="date" className="border rounded p-2 flex-1" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        <input className="border rounded p-2 flex-1" placeholder="Topic" value={topic} onChange={(e) => setTopic(e.target.value)} required />
+      </div>
+      <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+        Add Task
+      </button>
+    </form>
+    <div className="flex justify-between items-center mb-3">
+      <h2 className="text-lg font-semibold">
+        {showArchived ? 'Archived Tasks' : 'Active Tasks'}
+      </h2>
+      <button
+        onClick={() => setShowArchived(!showArchived)}
+        className="text-sm text-blue-600 hover:text-blue-800"
+      >
+        {showArchived ? 'Show active tasks' : 'Show archived tasks'}
+      </button>
+    </div>
+    <ul className="space-y-2">
+      {tasks.map((task) => (
+        <li key={task.id} className="border rounded p-3 flex justify-between items-start">
+          <div>
+            <div className="font-semibold">{task.title}</div>
+            <div className="text-sm text-gray-600">{task.description}</div>
+            <div className="text-xs text-gray-400 mt-1">
+              {task.topic} Â· {task.status} Â· due {task.due_date || 'no date'}
+            </div>
+          </div>
+          <button
+            onClick={() => (showArchived ? unarchiveTask(task.id) : archiveTask(task.id))}
+            className={`text-sm ml-4 shrink-0 ${
+              showArchived ? 'text-green-600 hover:text-green-800' : 'text-red-600 hover:text-red-800'
+            }`}
+          >
+            {showArchived ? 'Unarchive' : 'Archive'}
+          </button>
+        </li>
+      ))}
+    </ul>
+  </main>
+);
+
+#### **Claude** (7/31/2026, 2:40:09 PM):
+ That's the toggle working perfectly — you can see the pattern flipping between `archived=false` and `archived=true` each time you clicked "Show archived/active tasks." The page compiled clean, no more brace error.
+
+## Quick visual confirmation before committing
+
+Just to be thorough — since we can't see the archive/unarchive button clicks distinctly in this log (only GETs, no PATCH lines), can you confirm:
+1. When you toggled to "Show archived tasks," did you actually see the two previously-archived tasks ("Write lab report" and "Complete AAA lab")?
+2. Did clicking **Unarchive** on one work — i.e. did a `PATCH` show up and did it move back to the active list?
+
+If yes to both, you're good to commit. If the archived list looked empty or a PATCH didn't fire, paste a screenshot and we'll dig in.
+
+## Commit this slice (once confirmed)
+
+```powershell
+git add .
+git commit -m "Add show archived/active toggle with unarchive support
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+---
+
+Next up per your feature list: **sorting** (topic/status/due date) or **editing** — which do you want to tackle next?
+
+#### **User** (7/31/2026, 2:40:09 PM):
+ npm run dev                
+> coms3011a-lab1@0.1.0 dev
+> next dev
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.2.0.2:3000
+✓ Ready in 1291ms
+ GET / 200 in 925ms (next.js: 536ms, application-code: 389ms)
+ GET /api/tasks?archived=false 200 in 266ms (next.js: 214ms, application-code: 53ms)
+ GET /api/tasks?archived=true 200 in 26ms (next.js: 8ms, application-code: 17ms)
+ GET /api/tasks?archived=false 200 in 24ms (next.js: 8ms, application-code: 15ms)
+ GET /api/tasks?archived=true 200 in 26ms (next.js: 11ms, application-code: 15ms)
+ GET /api/tasks?archived=false 200 in 25ms (next.js: 10ms, application-code: 15ms)
+ GET /api/tasks?archived=true 200 in 24ms (next.js: 10ms, application-code: 14ms)
+ GET /api/tasks?archived=false 200 in 23ms (next.js: 8ms, application-code: 15ms)
+
+#### **Claude** (7/31/2026, 2:55:04 PM):
+ Let's add sorting. Since you're already fetching the full task list into React state, the simplest and most reliable approach is **client-side sorting** — no API changes needed, one less thing that can break.
+
+## Step 1: Add sort state
+
+Near your other `useState` calls in `page.js`:
+
+```javascript
+const [sortBy, setSortBy] = useState('due_date');
+```
+
+## Step 2: Add a sorting function
+
+Add this near `fetchTasks`, before the `return`:
+
+```javascript
+const sortedTasks = [...tasks].sort((a, b) => {
+  if (sortBy === 'due_date') {
+    // nulls last, since "no date" shouldn't jump to the top
+    if (!a.due_date) return 1;
+    if (!b.due_date) return -1;
+    return new Date(a.due_date) - new Date(b.due_date);
+  }
+  if (sortBy === 'topic') {
+    return a.topic.localeCompare(b.topic);
+  }
+  if (sortBy === 'status') {
+    const order = { todo: 0, in_progress: 1, complete: 2 };
+    return order[a.status] - order[b.status];
+  }
+  return 0;
+});
+```
+
+Why client-side here: you're not paging or filtering server-side beyond archived/active, and the list is small — re-sorting an already-fetched array avoids adding another query param and another round trip for every sort click. Worth a one-line mention in your docs as a deliberate simplicity trade-off.
+
+## Step 3: Add a sort dropdown to the UI
+
+Update the "Active Tasks" header block to include a select:
+
+```javascript
+<div className="flex justify-between items-center mb-3">
+  <h2 className="text-lg font-semibold">
+    {showArchived ? 'Archived Tasks' : 'Active Tasks'}
+  </h2>
+  <div className="flex items-center gap-3">
+    <select
+      value={sortBy}
+      onChange={(e) => setSortBy(e.target.value)}
+      className="text-sm border rounded p-1"
+    >
+      <option value="due_date">Sort by due date</option>
+      <option value="topic">Sort by topic</option>
+      <option value="status">Sort by status</option>
+    </select>
+    <button
+      onClick={() => setShowArchived(!showArchived)}
+      className="text-sm text-blue-600 hover:text-blue-800"
+    >
+      {showArchived ? 'Show active tasks' : 'Show archived tasks'}
+    </button>
+  </div>
+</div>
+```
+
+## Step 4: Use `sortedTasks` instead of `tasks` in the list
+
+Change:
+
+```javascript
+{tasks.map((task) => (
+```
+
+to:
+
+```javascript
+{sortedTasks.map((task) => (
+```
+
+## Step 5: Test it
+
+Add 2-3 tasks with different topics, statuses, and due dates (you can manually PATCH a status via PowerShell to get variety, e.g. set one to `in_progress`). Switch the dropdown between all three options and confirm the order visibly changes each time.
+
+Paste what you see or a screenshot, then we'll commit.
+
+#### **User** (7/31/2026, 2:55:04 PM):
+ sorting
+
+#### **Claude** (7/31/2026, 3:05:15 PM):
+ That's sorting by due date working correctly — 2026-08-02, then 2026-08-05, then 2026-08-11, in ascending order exactly as expected.
+
+## Quick confirmation before committing
+
+Switch the dropdown to **"Sort by topic"** and then **"Sort by status"** and confirm the order visibly changes each time too — since all three currently show `status: todo`, sorting by status alone won't look different unless you first vary at least one task's status. Quick way to test that:
+
+```powershell
+Invoke-RestMethod -Uri http://localhost:3000/api/tasks/2 -Method Patch -Body (@{
+  status = "in_progress"
+} | ConvertTo-Json) -ContentType "application/json"
+```
+
+Wait — your current `PATCH` route only handles `archive`, not `status`, so that request would silently do nothing right now. That's fine for today's slice (sorting works correctly on the data you have), but flag it as a known gap: **status editing** will need to extend the `PATCH /api/tasks/:id` route, which is exactly the "edit" feature you'll tackle next.
+
+For now, topic sorting is enough to visually confirm (your three topics — Baking, Lab, Shopping — are all different, so alphabetical order should visibly shuffle the cards). Try that dropdown option and confirm.
+
+## Commit this slice
+
+```powershell
+git add .
+git commit -m "Add client-side sorting by due date, topic, and status
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+---
+
+Next up: **editing tasks** (title/description/due date/topic/status) — this will extend the same `PATCH` route to handle field updates beyond just archiving. Want to build that next?
+
+#### **Claude** (7/31/2026, 3:08:19 PM):
+ Yes — the due-date sort you tested is definitely working (the screenshot proves it: 08-02 → 08-05 → 08-11, correct ascending order).
+
+To be fully confident before you commit, it's worth quickly checking the other two dropdown options too, since we've only visually confirmed one of three:
+
+- **"Sort by topic"** → should reorder to Baking, Lab, Shopping (alphabetical) — your three tasks have different topics, so this should visibly shuffle the cards. Worth a 5-second check.
+- **"Sort by status"** → won't visually change anything right now, since all three tasks currently have `status: todo`. That's not a bug — there's just no variation in the data to sort by yet. Nothing to worry about; the code logic is correct, we just can't *see* it do anything until a task has a different status (which comes with the edit feature next).
+
+So: click the dropdown, select "Sort by topic," and confirm the cards reorder. If they do, sorting is fully working and you're clear to commit:
+
+```powershell
+git add .
+git commit -m "Add client-side sorting by due date, topic, and status
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+#### **User** (7/31/2026, 3:08:19 PM):
+ So does this work
+
+#### **Claude** (7/31/2026, 3:11:23 PM):
+ Confirmed — topic sort is correctly grouping Baking, Baking, Lab, Lab, Shopping alphabetically. And status sort shows no visible change purely because every task currently has `status: todo` — that's expected, not a bug, exactly as flagged. The sort logic itself is correct; there's just nothing to differentiate yet.
+
+Sorting is fully working. Go ahead and commit:
+
+```powershell
+git add .
+git commit -m "Add client-side sorting by due date, topic, and status
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+---
+
+Next up: **editing tasks**. This will extend your `PATCH /api/tasks/:id` route to handle updates to title, description, due date, topic, and status — which will also finally let you test that status sort with real variation. Want to build that next?
+
+#### **Claude** (7/31/2026, 3:15:00 PM):
+ Let's extend the PATCH route and add an edit UI. Simplest reliable approach: inline edit mode per task card (click "Edit" → fields become editable → "Save").
+
+## Step 1: Extend the PATCH route to handle field edits
+
+Update `src\app\api\tasks\[id]\route.js` — replace the whole file with:
+
+```javascript
+import db from '@/lib/db';
+import { NextResponse } from 'next/server';
+
+export async function PATCH(request, { params }) {
+  const { id } = await params;
+  const body = await request.json();
+
+  const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  if (!existing) {
+    return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+  }
+
+  // Archive / unarchive
+  if (body.archive === true) {
+    db.prepare(`
+      UPDATE tasks SET archived_at = datetime('now'), updated_at = datetime('now')
+      WHERE id = ?
+    `).run(id);
+  }
+  if (body.archive === false) {
+    db.prepare(`
+      UPDATE tasks SET archived_at = NULL, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(id);
+  }
+
+  // Field edits: only touch fields that were actually sent
+  const editable = ['title', 'description', 'due_date', 'topic', 'status'];
+  const fieldsToUpdate = editable.filter((f) => body[f] !== undefined);
+
+  if (fieldsToUpdate.length > 0) {
+    const setClause = fieldsToUpdate.map((f) => `${f} = ?`).join(', ');
+    const values = fieldsToUpdate.map((f) => body[f]);
+
+    db.prepare(`
+      UPDATE tasks SET ${setClause}, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(...values, id);
+  }
+
+  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  return NextResponse.json(updated);
+}
+```
+
+This keeps `archive`/`unarchive` working exactly as before, and adds a generic partial-update path for any of the 5 editable fields — only fields actually present in the request body get touched, so a status-only edit won't blank out the title, etc.
+
+## Step 2: Add edit state and an update function in `page.js`
+
+Near your other `useState` calls:
+
+```javascript
+const [editingId, setEditingId] = useState(null);
+const [editForm, setEditForm] = useState({});
+```
+
+Add these functions near `archiveTask`:
+
+```javascript
+const startEdit = (task) => {
+  setEditingId(task.id);
+  setEditForm({
+    title: task.title,
+    description: task.description || '',
+    due_date: task.due_date || '',
+    topic: task.topic,
+    status: task.status,
+  });
+};
+
+const cancelEdit = () => {
+  setEditingId(null);
+  setEditForm({});
+};
+
+const saveEdit = async (id) => {
+  await fetch(`/api/tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(editForm),
+  });
+  setEditingId(null);
+  fetchTasks(showArchived);
+};
+```
+
+## Step 3: Update the list item JSX to support edit mode
+
+Replace your `<li>` block with this — it conditionally renders either the edit form or the normal display:
+
+```javascript
+<li key={task.id} className="border rounded p-3">
+  {editingId === task.id ? (
+    <div className="space-y-2">
+      <input
+        className="w-full border rounded p-2"
+        value={editForm.title}
+        onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+      />
+      <textarea
+        className="w-full border rounded p-2"
+        value={editForm.description}
+        onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+      />
+      <div className="flex gap-2">
+        <input
+          type="date"
+          className="border rounded p-2 flex-1"
+          value={editForm.due_date}
+          onChange={(e) => setEditForm({ ...editForm, due_date: e.target.value })}
+        />
+        <input
+          className="border rounded p-2 flex-1"
+          value={editForm.topic}
+          onChange={(e) => setEditForm({ ...editForm, topic: e.target.value })}
+        />
+        <select
+          className="border rounded p-2"
+          value={editForm.status}
+          onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
+        >
+          <option value="todo">todo</option>
+          <option value="in_progress">in_progress</option>
+          <option value="complete">complete</option>
+        </select>
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={() => saveEdit(task.id)}
+          className="bg-blue-600 text-white px-3 py-1 rounded text-sm"
+        >
+          Save
+        </button>
+        <button
+          onClick={cancelEdit}
+          className="text-gray-600 text-sm"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  ) : (
+    <div className="flex justify-between items-start">
+      <div>
+        <div className="font-semibold">{task.title}</div>
+        <div className="text-sm text-gray-600">{task.description}</div>
+        <div className="text-xs text-gray-400 mt-1">
+          {task.topic} · {task.status} · due {task.due_date || 'no date'}
+        </div>
+      </div>
+      <div className="flex gap-3 ml-4 shrink-0">
+        <button
+          onClick={() => startEdit(task)}
+          className="text-sm text-blue-600 hover:text-blue-800"
+        >
+          Edit
+        </button>
+        <button
+          onClick={() => (showArchived ? unarchiveTask(task.id) : archiveTask(task.id))}
+          className={`text-sm ${
+            showArchived ? 'text-green-600 hover:text-green-800' : 'text-red-600 hover:text-red-800'
+          }`}
+        >
+          {showArchived ? 'Unarchive' : 'Archive'}
+        </button>
+      </div>
+    </div>
+  )}
+</li>
+```
+
+## Step 4: Test it
+
+Reload the browser. Click **Edit** on a task, change the title, description, due date, topic, and status — set one task to `in_progress` and another to `complete` to finally get variation for testing the status sort. Click **Save**, confirm the card updates immediately, then **refresh the page** to confirm it persisted.
+
+Paste what you see or a screenshot.
+
+#### **User** (7/31/2026, 3:15:00 PM):
+ yes
+
+#### **Claude** (7/31/2026, 3:35:03 PM):
+ Edit and Archive buttons both rendering correctly, and "Finish labs" shows **"Two left"** (was "Three left" before) — the edit saved and persisted through a reload. Nice.
+
+## One more check before committing: status editing specifically
+
+You've proven title/description edits work, but we haven't confirmed the **status** dropdown saves correctly yet. Quick test:
+
+1. Click **Edit** on "Finish labs," change status to `in_progress`, Save
+2. Click **Edit** on "Fetch Order," change status to `complete`, Save
+3. Confirm both show the new status in the card text (e.g. `Lab · in_progress · due 2026-08-02`)
+4. Switch the sort dropdown to **"Sort by status"** — now that you have variation, confirm todo/in_progress/complete actually reorder
+
+If that all works, you've got edit + sort both fully proven together. Paste a screenshot, then we'll commit:
+
+```powershell
+git add .
+git commit -m "Add inline task editing for title, description, due date, topic, and status
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+#### **Claude** (7/31/2026, 3:36:44 PM):
+ That's everything confirmed at once: three `todo` tasks first, then `in_progress` ("Finish labs"), then `complete` ("Fetch Order") — exactly matching your defined order (`todo: 0, in_progress: 1, complete: 2`). Editing status persisted correctly, and status sorting is proven with real variation now.
+
+## Commit this slice
+
+```powershell
+git add .
+git commit -m "Add inline task editing for title, description, due date, topic, and status
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+You're in great shape now — commit count is solid (7+), and every major feature from your brief is done except one: **the overdue visual flag**. That one's quick since it's just a derived UI property, not new backend work.
+
+## What's left
+
+- **Overdue flag**: any task where `due_date < today AND status !== 'complete'` gets a visual marker (e.g. red text or a badge) — computed at render time in `page.js`, no new DB column, no new API call.
+- **Tests**: at least 3 real tests (not smoke tests) — one should cover archive behavior, one should cover the overdue derivation logic.
+- **Documentation**: Third-Party Code, Database Design, Running It — plus your AI declarations.
+- **Clean-clone dry run** before submitting.
+
+Want to knock out the overdue flag next, since it's small, then move to tests?
+
+#### **Claude** (8/2/2026, 12:17:28 PM):
+ ## Add the overdue flag
+
+Purely a display computation — no new DB column, no new API call, no `status` change. This matters for your Database Design doc: overdue must stay derived, never stored.
+
+## Step 1: Add a helper function in `page.js`
+
+Near the top of the component, before `return`:
+
+```javascript
+const isOverdue = (task) => {
+  if (!task.due_date || task.status === 'complete') return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(task.due_date);
+  return due < today;
+};
+```
+
+Setting `today`'s hours to zero avoids a subtle bug where a task due *today* gets falsely flagged overdue just because the current time is later in the day than midnight.
+
+## Step 2: Use it in the list item display
+
+In the non-editing branch of your `<li>`, update the metadata line:
+
+```javascript
+<div className="text-xs text-gray-400 mt-1">
+  {task.topic} · {task.status} · due {task.due_date || 'no date'}
+  {isOverdue(task) && (
+    <span className="ml-2 text-red-600 font-semibold">Overdue</span>
+  )}
+</div>
+```
+
+You could also style the whole card differently when overdue (e.g. a red left border) if you want it more visually obvious — optional, up to you:
+
+```javascript
+<li
+  key={task.id}
+  className={`border rounded p-3 ${isOverdue(task) ? 'border-red-400 bg-red-50' : ''}`}
+>
+```
+
+## Step 3: Test it
+
+You have "Find recipe" due 2026-07-31 — that's in the past relative to today (2026-08-02), and its status is `todo`, so it should now show the **Overdue** badge. Your other tasks are due 2026-08-02 or later, so they shouldn't be flagged (2026-08-02 is today, not overdue).
+
+As an extra check: edit "Find recipe" and set status to `complete` — the Overdue badge should disappear even though the due date hasn't changed, proving the derivation logic (not just the date) is correct.
+
+Reload the browser and paste a screenshot.
+
+#### **User** (8/2/2026, 12:17:28 PM):
+ yes
+
+#### **Claude** (8/2/2026, 12:23:45 PM):
+ The red-tinted card confirms `isOverdue` correctly flagged only "Find recipe" (due 2026-07-31, past) while leaving the two 2026-08-02 tasks unmarked — correctly treating "due today" as not yet overdue. The other status/date combinations are all correctly unflagged too.
+
+One thing to double check from the screenshot — I can't quite tell if the red **"Overdue"** text badge itself is showing in the metadata line, or if it's just the card border/background styling. Can you confirm you see the word "Overdue" next to "Baking · todo · due 2026-07-31"? If it's missing, the `isOverdue(task) && (...)` conditional span might not be rendering — let me know and I'll help debug, but the derivation logic itself (which is the part that actually matters for marks) is clearly working correctly either way.
+
+Assuming the badge text is there too, this feature is done. Commit it:
+
+```powershell
+git add .
+git commit -m "Add derived overdue flag, computed from due_date and status at render time
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+---
+
+Every core feature from the brief is now built: create, list, edit, archive/unarchive, sort, overdue flag, and persistence — all confirmed working through the browser and surviving reloads. That's a strong, complete feature set.
+
+## Next: tests
+
+You need at least 3 real tests (not smoke tests), including one for archiving and one for the overdue logic, running against a throwaway test DB rather than your dev database. Want to set that up next?
+
+#### **Claude** (8/2/2026, 12:25:09 PM):
+ Found it — the Overdue badge span got added to the **editing** branch's metadata line, not the normal **display** branch. Look at your file: the `{isOverdue(task) && (...)}` block sits inside the `editingId === task.id ?` block (which only renders when you're actively editing that task), while the plain display div further down — the one that's actually visible normally — never got the badge added.
+
+## Fix: move the badge to the display branch
+
+Find this block (the one *without* the badge, inside the `) : (` else-branch):
+
+```javascript
+<div className="text-sm text-gray-600">{task.description}</div>
+<div className="text-xs text-gray-400 mt-1">
+  {task.topic} · {task.status} · due {task.due_date || 'no date'}
+</div>
+```
+
+Replace it with:
+
+```javascript
+<div className="text-sm text-gray-600">{task.description}</div>
+<div className="text-xs text-gray-400 mt-1">
+  {task.topic} · {task.status} · due {task.due_date || 'no date'}
+  {isOverdue(task) && (
+    <span className="ml-2 text-red-600 font-semibold">Overdue</span>
+  )}
+</div>
+```
+
+## Optional cleanup
+
+You can leave the badge in the editing branch too (harmless, shows overdue status while editing) or remove it from there to avoid duplication — either is fine, doesn't affect marks. If you want it out, just delete this bit from inside the editing form:
+
+```javascript
+<div className="text-xs text-gray-400 mt-1">
+  {task.topic} · {task.status} · due {task.due_date || 'no date'}
+  {isOverdue(task) && (
+    <span className="ml-2 text-red-600 font-semibold">Overdue</span>
+  )}
+</div>
+```
+
+Save, reload, and check "Find recipe" now shows the red **Overdue** text next to its metadata — not just the card tint. Paste a screenshot to confirm.
+
+#### **User** (8/2/2026, 12:25:09 PM):
+ yes overdue isnt showing:
+
+#### **Claude** (8/2/2026, 12:28:23 PM):
+ Now the **Overdue** badge is showing properly, red text and card tint both correctly applied to "Find recipe" only. That's the overdue feature fully working — derivation logic, badge, and styling all confirmed correct.
+
+## Commit this
+
+```powershell
+git add .
+git commit -m "Fix overdue badge placement to display branch, was only rendering in edit mode
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+That commit message honestly documents a real bug you caught and fixed — good material for your AI-usage reflection later (the rubric specifically rewards catching and correcting bad AI output, not just accepting it).
+
+---
+
+Every core feature is now done: create, list, edit, archive/unarchive, sort, overdue flag, persistence — all working and confirmed through the browser.
+
+## Next: tests
+
+You need at least 3 real tests, including one covering archive behavior and one covering the overdue derivation logic, run against a throwaway test database rather than your dev DB. Want to set that up now?
+
+#### **Claude** (8/2/2026, 12:30:58 PM):
+ Let's set this up. Since your DB logic lives in `db.js` and your API routes call it directly, the cleanest approach is: extract testable logic into plain functions, point tests at a throwaway SQLite file (not your dev `data/app.db`), and test against that.
+
+## Step 1: Install a test runner
+
+Vitest is lightweight and works well here:
+
+```powershell
+npm install -D vitest
+```
+
+## Step 2: Make your DB module test-friendly
+
+Your `db.js` already reads `process.env.DB_PATH` — good, that means tests can just point it elsewhere. Let's also extract the SQL logic into small, testable functions rather than only living inline inside API routes.
+
+Create `src\lib\tasks.js`:
+
+```javascript
+import db from './db';
+
+export function createTask({ title, description, due_date, topic }) {
+  const result = db.prepare(`
+    INSERT INTO tasks (title, description, due_date, topic)
+    VALUES (?, ?, ?, ?)
+  `).run(title, description || null, due_date || null, topic);
+
+  return db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid);
+}
+
+export function getTasks(archived = false) {
+  return archived
+    ? db.prepare(`SELECT * FROM tasks WHERE archived_at IS NOT NULL ORDER BY due_date ASC`).all()
+    : db.prepare(`SELECT * FROM tasks WHERE archived_at IS NULL ORDER BY due_date ASC`).all();
+}
+
+export function archiveTask(id) {
+  db.prepare(`
+    UPDATE tasks SET archived_at = datetime('now'), updated_at = datetime('now')
+    WHERE id = ?
+  `).run(id);
+  return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+}
+
+export function unarchiveTask(id) {
+  db.prepare(`
+    UPDATE tasks SET archived_at = NULL, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(id);
+  return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+}
+```
+
+Then simplify your API routes to call these instead of writing raw SQL inline — `src\app\api\tasks\route.js`:
+
+```javascript
+import { createTask, getTasks } from '@/lib/tasks';
+import { NextResponse } from 'next/server';
+
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const showArchived = searchParams.get('archived') === 'true';
+  return NextResponse.json(getTasks(showArchived));
+}
+
+export async function POST(request) {
+  const body = await request.json();
+  const { title, description, due_date, topic } = body;
+
+  if (!title || !topic) {
+    return NextResponse.json({ error: 'title and topic are required' }, { status: 400 });
+  }
+
+  const newTask = createTask({ title, description, due_date, topic });
+  return NextResponse.json(newTask, { status: 201 });
+}
+```
+
+And `src\app\api\tasks\[id]\route.js` — just swap the archive/unarchive raw SQL for the new functions, keep the field-edit logic as-is:
+
+```javascript
+import db from '@/lib/db';
+import { archiveTask, unarchiveTask } from '@/lib/tasks';
+import { NextResponse } from 'next/server';
+
+export async function PATCH(request, { params }) {
+  const { id } = await params;
+  const body = await request.json();
+
+  const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  if (!existing) {
+    return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+  }
+
+  if (body.archive === true) archiveTask(id);
+  if (body.archive === false) unarchiveTask(id);
+
+  const editable = ['title', 'description', 'due_date', 'topic', 'status'];
+  const fieldsToUpdate = editable.filter((f) => body[f] !== undefined);
+
+  if (fieldsToUpdate.length > 0) {
+    const setClause = fieldsToUpdate.map((f) => `${f} = ?`).join(', ');
+    const values = fieldsToUpdate.map((f) => body[f]);
+    db.prepare(`UPDATE tasks SET ${setClause}, updated_at = datetime('now') WHERE id = ?`).run(...values, id);
+  }
+
+  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  return NextResponse.json(updated);
+}
+```
+
+## Step 3: Extract `isOverdue` into a shared, testable pure function
+
+Create `src\lib\overdue.js`:
+
+```javascript
+export function isOverdue(task) {
+  if (!task.due_date || task.status === 'complete') return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(task.due_date);
+  return due < today;
+}
+```
+
+Then in `page.js`, replace your local `isOverdue` function with an import:
+
+```javascript
+import { isOverdue } from '@/lib/overdue';
+```
+
+...and delete the inline `const isOverdue = (task) => {...}` block entirely. This is the important part for the "overdue as derived logic" rubric point: the exact same function now runs in your UI *and* your test suite, proving they can't drift apart.
+
+## Step 4: Point test runs at a throwaway database
+
+Create `vitest.config.js` in your repo root:
+
+```javascript
+import { defineConfig } from 'vitest/config';
+import path from 'path';
+
+export default defineConfig({
+  test: {
+    environment: 'node',
+    setupFiles: ['./tests/setup.js'],
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+});
+```
+
+Create `tests\setup.js`:
+
+```javascript
+import fs from 'fs';
+import path from 'path';
+
+const testDbPath = path.join(process.cwd(), 'tests', 'test.db');
+
+// Always start each test run from a clean database file
+if (fs.existsSync(testDbPath)) {
+  fs.unlinkSync(testDbPath);
+}
+
+process.env.DB_PATH = testDbPath;
+```
+
+Add a `.gitignore` entry so the generated test DB file never gets committed:
+
+```powershell
+Add-Content .gitignore "`ntests/test.db"
+```
+
+## Step 5: Write the actual tests
+
+Create `tests\tasks.test.js`:
+
+```javascript
+import { describe, it, expect } from 'vitest';
+import { createTask, getTasks, archiveTask, unarchiveTask } from '@/lib/tasks';
+import { isOverdue } from '@/lib/overdue';
+
+describe('createTask', () => {
+  it('creates a task with correct defaults', () => {
+    const task = createTask({ title: 'Test task', description: 'desc', due_date: '2026-08-10', topic: 'Test' });
+    expect(task.title).toBe('Test task');
+    expect(task.status).toBe('todo');
+    expect(task.archived_at).toBeNull();
+  });
+});
+
+describe('archiveTask', () => {
+  it('sets archived_at instead of deleting the row', () => {
+    const task = createTask({ title: 'To archive', topic: 'Test' });
+    const archived = archiveTask(task.id);
+
+    expect(archived.archived_at).not.toBeNull();
+
+    // Confirm it's gone from the active list...
+    const active = getTasks(false);
+    expect(active.find((t) => t.id === task.id)).toBeUndefined();
+
+    // ...but still exists in the archived list, proving it wasn't deleted
+    const archivedList = getTasks(true);
+    expect(archivedList.find((t) => t.id === task.id)).toBeDefined();
+  });
+
+  it('can be reversed with unarchiveTask', () => {
+    const task = createTask({ title: 'Round trip', topic: 'Test' });
+    archiveTask(task.id);
+    const restored = unarchiveTask(task.id);
+
+    expect(restored.archived_at).toBeNull();
+    const active = getTasks(false);
+    expect(active.find((t) => t.id === task.id)).toBeDefined();
+  });
+});
+
+describe('isOverdue', () => {
+  it('flags a past due_date with status todo as overdue', () => {
+    const task = { due_date: '2020-01-01', status: 'todo' };
+    expect(isOverdue(task)).toBe(true);
+  });
+
+  it('does not flag a completed task even if past due_date', () => {
+    const task = { due_date: '2020-01-01', status: 'complete' };
+    expect(isOverdue(task)).toBe(false);
+  });
+
+  it('does not flag a task with no due_date', () => {
+    const task = { due_date: null, status: 'todo' };
+    expect(isOverdue(task)).toBe(false);
+  });
+
+  it('does not flag a task due today', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const task = { due_date: today, status: 'todo' };
+    expect(isOverdue(task)).toBe(false);
+  });
+});
+```
+
+This gives you well beyond the 3-test minimum, with real behavioral assertions (not smoke tests), directly covering both required areas: archiving (proves it's a flag, not a delete) and overdue derivation (proves multiple edge cases, not just the happy path).
+
+## Step 6: Add the test script and run it
+
+In `package.json`, add to `"scripts"`:
+
+```json
+"test": "vitest run"
+```
+
+Run:
+
+```powershell
+npm test
+```
+
+Paste the output — should show all tests passing.
+
+#### **User** (8/2/2026, 12:30:58 PM):
+ yes
+
+#### **Claude** (8/2/2026, 12:34:23 PM):
+ That's just the vitest install completing successfully — same as before, ignore the audit warnings (don't run `--force`, could break your Next.js setup).
+
+You've only done Step 1 so far. Let's continue through the rest.
+
+## Step 2: Create `src\lib\tasks.js`
+
+```powershell
+New-Item -ItemType File -Path src\lib\tasks.js
+```
+
+Paste in:
+
+```javascript
+import db from './db';
+
+export function createTask({ title, description, due_date, topic }) {
+  const result = db.prepare(`
+    INSERT INTO tasks (title, description, due_date, topic)
+    VALUES (?, ?, ?, ?)
+  `).run(title, description || null, due_date || null, topic);
+
+  return db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid);
+}
+
+export function getTasks(archived = false) {
+  return archived
+    ? db.prepare(`SELECT * FROM tasks WHERE archived_at IS NOT NULL ORDER BY due_date ASC`).all()
+    : db.prepare(`SELECT * FROM tasks WHERE archived_at IS NULL ORDER BY due_date ASC`).all();
+}
+
+export function archiveTask(id) {
+  db.prepare(`
+    UPDATE tasks SET archived_at = datetime('now'), updated_at = datetime('now')
+    WHERE id = ?
+  `).run(id);
+  return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+}
+
+export function unarchiveTask(id) {
+  db.prepare(`
+    UPDATE tasks SET archived_at = NULL, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(id);
+  return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+}
+```
+
+## Step 3: Update the two API route files to use it
+
+Replace `src\app\api\tasks\route.js` entirely:
+
+```javascript
+import { createTask, getTasks } from '@/lib/tasks';
+import { NextResponse } from 'next/server';
+
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const showArchived = searchParams.get('archived') === 'true';
+  return NextResponse.json(getTasks(showArchived));
+}
+
+export async function POST(request) {
+  const body = await request.json();
+  const { title, description, due_date, topic } = body;
+
+  if (!title || !topic) {
+    return NextResponse.json({ error: 'title and topic are required' }, { status: 400 });
+  }
+
+  const newTask = createTask({ title, description, due_date, topic });
+  return NextResponse.json(newTask, { status: 201 });
+}
+```
+
+Replace `src\app\api\tasks\[id]\route.js` entirely:
+
+```javascript
+import db from '@/lib/db';
+import { archiveTask, unarchiveTask } from '@/lib/tasks';
+import { NextResponse } from 'next/server';
+
+export async function PATCH(request, { params }) {
+  const { id } = await params;
+  const body = await request.json();
+
+  const existing = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  if (!existing) {
+    return NextResponse.json({ error: 'Task not found' }, { status: 404 });
+  }
+
+  if (body.archive === true) archiveTask(id);
+  if (body.archive === false) unarchiveTask(id);
+
+  const editable = ['title', 'description', 'due_date', 'topic', 'status'];
+  const fieldsToUpdate = editable.filter((f) => body[f] !== undefined);
+
+  if (fieldsToUpdate.length > 0) {
+    const setClause = fieldsToUpdate.map((f) => `${f} = ?`).join(', ');
+    const values = fieldsToUpdate.map((f) => body[f]);
+    db.prepare(`UPDATE tasks SET ${setClause}, updated_at = datetime('now') WHERE id = ?`).run(...values, id);
+  }
+
+  const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+  return NextResponse.json(updated);
+}
+```
+
+## Step 4: Extract `isOverdue` into `src\lib\overdue.js`
+
+```powershell
+New-Item -ItemType File -Path src\lib\overdue.js
+```
+
+```javascript
+export function isOverdue(task) {
+  if (!task.due_date || task.status === 'complete') return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(task.due_date);
+  return due < today;
+}
+```
+
+Then in `src\app\page.js`: add `import { isOverdue } from '@/lib/overdue';` near your other imports, and **delete** the inline `const isOverdue = (task) => {...}` block that's currently in the component (it's now redundant/duplicated — remove it, don't leave both).
+
+## Step 5: Test infra files
+
+```powershell
+mkdir tests
+New-Item -ItemType File -Path vitest.config.js
+New-Item -ItemType File -Path tests\setup.js
+New-Item -ItemType File -Path tests\tasks.test.js
+```
+
+`vitest.config.js`:
+```javascript
+import { defineConfig } from 'vitest/config';
+import path from 'path';
+
+export default defineConfig({
+  test: {
+    environment: 'node',
+    setupFiles: ['./tests/setup.js'],
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+});
+```
+
+`tests\setup.js`:
+```javascript
+import fs from 'fs';
+import path from 'path';
+
+const testDbPath = path.join(process.cwd(), 'tests', 'test.db');
+
+if (fs.existsSync(testDbPath)) {
+  fs.unlinkSync(testDbPath);
+}
+
+process.env.DB_PATH = testDbPath;
+```
+
+`tests\tasks.test.js`: (full content from previous message — paste as-is)
+
+```javascript
+import { describe, it, expect } from 'vitest';
+import { createTask, getTasks, archiveTask, unarchiveTask } from '@/lib/tasks';
+import { isOverdue } from '@/lib/overdue';
+
+describe('createTask', () => {
+  it('creates a task with correct defaults', () => {
+    const task = createTask({ title: 'Test task', description: 'desc', due_date: '2026-08-10', topic: 'Test' });
+    expect(task.title).toBe('Test task');
+    expect(task.status).toBe('todo');
+    expect(task.archived_at).toBeNull();
+  });
+});
+
+describe('archiveTask', () => {
+  it('sets archived_at instead of deleting the row', () => {
+    const task = createTask({ title: 'To archive', topic: 'Test' });
+    const archived = archiveTask(task.id);
+
+    expect(archived.archived_at).not.toBeNull();
+
+    const active = getTasks(false);
+    expect(active.find((t) => t.id === task.id)).toBeUndefined();
+
+    const archivedList = getTasks(true);
+    expect(archivedList.find((t) => t.id === task.id)).toBeDefined();
+  });
+
+  it('can be reversed with unarchiveTask', () => {
+    const task = createTask({ title: 'Round trip', topic: 'Test' });
+    archiveTask(task.id);
+    const restored = unarchiveTask(task.id);
+
+    expect(restored.archived_at).toBeNull();
+    const active = getTasks(false);
+    expect(active.find((t) => t.id === task.id)).toBeDefined();
+  });
+});
+
+describe('isOverdue', () => {
+  it('flags a past due_date with status todo as overdue', () => {
+    const task = { due_date: '2020-01-01', status: 'todo' };
+    expect(isOverdue(task)).toBe(true);
+  });
+
+  it('does not flag a completed task even if past due_date', () => {
+    const task = { due_date: '2020-01-01', status: 'complete' };
+    expect(isOverdue(task)).toBe(false);
+  });
+
+  it('does not flag a task with no due_date', () => {
+    const task = { due_date: null, status: 'todo' };
+    expect(isOverdue(task)).toBe(false);
+  });
+
+  it('does not flag a task due today', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const task = { due_date: today, status: 'todo' };
+    expect(isOverdue(task)).toBe(false);
+  });
+});
+```
+
+## Step 6: Add the test script
+
+Open `package.json`, and inside `"scripts"`, add:
+
+```json
+"test": "vitest run"
+```
+
+## Step 7: Run it
+
+```powershell
+npm test
+```
+
+Paste the full output — go through steps 2-7 in order and let me know if anything errors along the way.
+
+#### **User** (8/2/2026, 12:34:23 PM):
+ added 38 packages, and audited 397 packages in 19s
+159 packages are looking for funding
+  run `npm fund` for details
+3 high severity vulnerabilities
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+Run `npm audit` for details.
+
+#### **Claude** (8/2/2026, 12:42:49 PM):
+ No worries — let's pin down exactly where.
+
+## Open `src\app\page.js`
+
+At the very top of the file, you'll see your existing imports:
+
+```javascript
+'use client';
+
+import { useState, useEffect } from 'react';
+```
+
+Add the new import as a third line, right after that:
+
+```javascript
+'use client';
+
+import { useState, useEffect } from 'react';
+import { isOverdue } from '@/lib/overdue';
+```
+
+## Then find and delete the old inline version
+
+Scroll down inside the `Home` component — you'll see this block, which is currently defined locally in the file (it's the same logic we're now importing instead):
+
+```javascript
+const isOverdue = (task) => {
+  if (!task.due_date || task.status === 'complete') return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(task.due_date);
+  return due < today;
+};
+```
+
+**Delete that whole block.** You can't have two things named `isOverdue` in the same file — one from the import, one defined locally — that would cause a "duplicate declaration" error.
+
+## Quick way to find it
+
+```powershell
+Select-String -Path src\app\page.js -Pattern "isOverdue"
+```
+
+This will show you every line mentioning `isOverdue` and its line number, so you can confirm exactly where the import goes and where the old local definition needs to be deleted from.
+
+#### **User** (8/2/2026, 12:42:49 PM):
+ im confused where this is
+
+#### **User** (8/2/2026, 12:53:09 PM):
+ npm test
+> coms3011a-lab1@0.1.0 test
+> vitest run
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - ESM syntax in a file loaded as CommonJS (vitest.config.js:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+ RUN  v4.1.10 C:/Users/liora/OneDrive/Documentos/GitHub/SDP/Lab 1/coms3011a-lab1
+ ✓ tests/tasks.test.js (7 tests) 17ms
+   ✓ createTask (1)
+     ✓ creates a task with correct defaults 6ms
+   ✓ archiveTask (2)
+     ✓ sets archived_at instead of deleting the row 2ms
+     ✓ can be reversed with unarchiveTask 2ms
+   ✓ isOverdue (4)
+     ✓ flags a past due_date with status todo as overdue 2ms
+     ✓ does not flag a completed task even if past due_date 1ms
+     ✓ does not flag a task with no due_date 0ms
+     ✓ does not flag a task due today 1ms
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  12:52:43
+   Duration  650ms (transform 91ms, setup 63ms, import 157ms, tests 17ms, environment 0ms)
+
+#### **Claude** (8/2/2026, 12:53:10 PM):
+ All 7 tests passing on the first real run — great result. That's well beyond your 3-test minimum, with genuine behavioral coverage: task creation defaults, archive-not-delete (plus its reverse), and four edge cases on the overdue derivation logic.
+
+## One harmless warning to clean up (optional but easy)
+
+The CommonJS/ESM warning at the top won't fail anything, but it's a one-line fix. Rename the config file:
+
+```powershell
+Rename-Item vitest.config.js vitest.config.mjs
+```
+
+Rerun to confirm the warning's gone:
+
+```powershell
+npm test
+```
+
+## Commit this slice
+
+```powershell
+git add .
+git commit -m "Add test suite with Vitest covering task creation, archiving, and overdue logic; refactor DB logic into src/lib/tasks.js for testability
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+This is a great commit to point to later for the AI-usage rubric line — it's not just "AI wrote tests," it's AI helping you refactor for testability (extracting `tasks.js` and `overdue.js` as pure/shared functions) so the tests exercise the *same* logic your UI uses, not a reimplementation.
+
+---
+
+You're now essentially feature-and-test complete. What's left per the brief:
+
+1. **Documentation** — Third-Party Code, Database Design, Running It (as markdown in the repo)
+2. **AI declarations** — per-document declaration lines, `Assisted-by` tags (already doing this), README AI usage categories
+3. **Clean-clone dry run** before submitting
+
+Want to write the documentation next?
+
+#### **Claude** (8/2/2026, 12:54:03 PM):
+ Good — same problem we hit with `next.config.mjs` earlier: `.mjs` files run as native ES modules, so `__dirname` doesn't exist automatically. Same fix applies here.
+
+## Fix `vitest.config.mjs`
+
+Open it and replace `__dirname` the same ESM-safe way:
+
+```javascript
+import { defineConfig } from 'vitest/config';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+export default defineConfig({
+  test: {
+    environment: 'node',
+    setupFiles: ['./tests/setup.js'],
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+});
+```
+
+Or, since Vitest's own warning suggests it, the cleaner modern fix is to just use `import.meta.dirname` directly (available in recent Node versions) instead of reconstructing `__dirname` at all:
+
+```javascript
+import { defineConfig } from 'vitest/config';
+import path from 'path';
+
+export default defineConfig({
+  test: {
+    environment: 'node',
+    setupFiles: ['./tests/setup.js'],
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(import.meta.dirname, './src'),
+    },
+  },
+});
+```
+
+Either works — the second is shorter and is literally what the warning recommended. Use that one.
+
+## Rerun
+
+```powershell
+npm test
+```
+
+Confirm the warning's gone and all 7 tests still pass, then commit:
+
+```powershell
+git add .
+git commit -m "Fix vitest config to use import.meta.dirname instead of __dirname for ESM compatibility
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+#### **User** (8/2/2026, 12:54:03 PM):
+ npm test                                      
+> coms3011a-lab1@0.1.0 test
+> vitest run
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - `__dirname` (vitest.config.mjs:11:25). Use `import.meta.dirname` instead
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+ RUN  v4.1.10 C:/Users/liora/OneDrive/Documentos/GitHub/SDP/Lab 1/coms3011a-lab1
+ ✓ tests/tasks.test.js (7 tests) 15ms
+   ✓ createTask (1)
+     ✓ creates a task with correct defaults 5ms
+   ✓ archiveTask (2)
+     ✓ sets archived_at instead of deleting the row 2ms
+     ✓ can be reversed with unarchiveTask 2ms
+   ✓ isOverdue (4)
+     ✓ flags a past due_date with status todo as overdue 2ms
+     ✓ does not flag a completed task even if past due_date 0ms
+     ✓ does not flag a task with no due_date 0ms
+     ✓ does not flag a task due today 1ms
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  12:53:45
+   Duration  662ms (transform 90ms, setup 61ms, import 145ms, tests 15ms, environment 0ms)
+
+#### **Claude** (8/2/2026, 12:55:56 PM):
+ Clean run, no warnings, all 7 tests passing. Commit it:
+
+```powershell
+git add .
+git commit -m "Fix vitest config to use import.meta.dirname instead of __dirname for ESM compatibility
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+You now have a genuinely strong project: full feature set, a working test suite, and 9+ meaningful commits, each documenting real problems you hit and fixed along the way. That's excellent material for the AI-usage rubric — you've got a real trail of catching bad output (Turbopack cache corruption, brace mismatches, misplaced JSX, `__dirname` in ESM) rather than blindly accepting whatever was generated.
+
+## What's left
+
+1. **Documentation** — three markdown docs: Third-Party Code, Database Design, Running It
+2. **AI declarations** — declaration lines on each doc, README AI-usage categories (you're already tagging commits correctly)
+3. **AI transcripts** — keep/export this conversation as part of your submission
+4. **Clean-clone dry run** — verify the whole thing works from scratch before submitting
+
+Want to write the documentation now? I can draft all three docs accurately based on exactly what you've built (schema, libraries, run commands) so they match your actual code rather than a generic template.
+
+#### **User** (8/2/2026, 12:55:56 PM):
+ npm test
+> coms3011a-lab1@0.1.0 test
+> vitest run
+ RUN  v4.1.10 C:/Users/liora/OneDrive/Documentos/GitHub/SDP/Lab 1/coms3011a-lab1
+ ✓ tests/tasks.test.js (7 tests) 14ms
+   ✓ createTask (1)
+     ✓ creates a task with correct defaults 4ms
+   ✓ archiveTask (2)
+     ✓ sets archived_at instead of deleting the row 2ms
+     ✓ can be reversed with unarchiveTask 2ms
+   ✓ isOverdue (4)
+     ✓ flags a past due_date with status todo as overdue 1ms
+     ✓ does not flag a completed task even if past due_date 0ms
+     ✓ does not flag a task with no due_date 0ms
+     ✓ does not flag a task due today 1ms
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+   Start at  12:55:41
+   Duration  682ms (transform 154ms, setup 56ms, import 209ms, tests 14ms, environment 0ms)
+
+#### **Claude** (8/2/2026, 1:18:59 PM):
+ Let's create three markdown docs matching exactly what you've built. I'll give you the full content — just create the files and paste in.
+
+## 1. Third-Party Code
+
+```powershell
+mkdir docs
+New-Item -ItemType File -Path docs\THIRD_PARTY.md
+```
+
+`docs\THIRD_PARTY.md`:
+
+```markdown
+# Third-Party Code
+
+This document lists every third-party package used in this project and why it was chosen.
+
+## Dependencies
+
+### next (v16.2.12)
+The core framework for this project. Provides the App Router, API routes, and dev server used to build the entire application (frontend UI and backend API in one codebase).
+
+### react / react-dom
+Required peer dependencies of Next.js. Used for all UI components via hooks (`useState`, `useEffect`).
+
+### better-sqlite3 (v13.0.2)
+Synchronous SQLite driver for Node.js. Chosen over an async driver because this is a local-first, single-user application with no need for connection pooling or non-blocking I/O — a synchronous API keeps the data layer simple and avoids unnecessary `async`/`await` plumbing throughout the codebase.
+
+### tailwindcss
+Utility-first CSS framework used for all styling in the application (forms, buttons, task cards, layout).
+
+## Dev Dependencies
+
+### vitest (v4.1.10)
+Test runner used for the project's test suite (`tests/tasks.test.js`). Chosen for its fast startup, native ESM support, and zero-config compatibility with a Next.js/Vite-adjacent toolchain.
+
+### eslint
+Linting, included by the `create-next-app` scaffold to catch common JavaScript errors during development.
+
+## Notes
+
+- No ORM was used. Database access goes through raw SQL via `better-sqlite3`, kept intentionally simple and centralized in `src/lib/db.js` and `src/lib/tasks.js`.
+- `@types/better-sqlite3` was installed initially but removed, since the project ended up using plain JavaScript rather than TypeScript.
+```
+
+## 2. Database Design
+
+```powershell
+New-Item -ItemType File -Path docs\DATABASE.md
+```
+
+`docs\DATABASE.md`:
+
+```markdown
+# Database Design
+
+## Overview
+
+The application uses a single SQLite database file (`data/app.db`) with one table: `tasks`.
+
+## Schema
+
+```sql
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  description TEXT,
+  due_date TEXT,
+  topic TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('todo', 'in_progress', 'complete')) DEFAULT 'todo',
+  archived_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+```
+
+## Design decisions
+
+**`status` is constrained to exactly three values** (`todo`, `in_progress`, `complete`) via a `CHECK` constraint. "Overdue" is deliberately *not* a fourth status value.
+
+**Overdue is a derived property, not a stored column.** A task is considered overdue if `due_date` is in the past *and* `status !== 'complete'`. This logic lives in `src/lib/overdue.js` as a pure function (`isOverdue`), used identically by both the UI and the test suite, so overdue state can never fall out of sync with the underlying data — it's recalculated fresh on every render rather than persisted anywhere.
+
+**Archiving uses a nullable timestamp (`archived_at`), not a boolean flag and not a separate table.** Archiving a task sets `archived_at` to the current time; unarchiving sets it back to `NULL`. This was chosen over a boolean because the timestamp doubles as a record of *when* a task was archived, at no extra cost. Archived tasks are never deleted or moved — they remain in the same `tasks` table and are simply filtered by whether `archived_at IS NULL` (active) or `archived_at IS NOT NULL` (archived).
+
+**`created_at` / `updated_at`** aren't required by the brief but were added for free using SQLite's `datetime('now')` default, and proved useful during development for debugging and confirming persistence.
+
+## Relationships
+
+There is only one table — no foreign keys or relationships exist in this schema, since all task data (title, description, due date, topic, status, archive state) lives on a single row per task.
+```
+
+## 3. Running It
+
+```powershell
+New-Item -ItemType File -Path docs\RUNNING.md
+```
+
+`docs\RUNNING.md`:
+
+```markdown
+# Running This Project
+
+## Requirements
+
+- Node.js (LTS version recommended; developed and tested on Node with npm)
+- npm
+
+## Installation
+
+Clone the repository, then install dependencies:
+
+```bash
+npm install
+```
+
+## Running the development server
+
+```bash
+npm run dev
+```
+
+The app will be available at `http://localhost:3000` (or the next available port if 3000 is already in use — check the terminal output for the actual URL).
+
+On first run, the SQLite database file (`data/app.db`) is created automatically, along with the `tasks` table, if they don't already exist.
+
+## Running tests
+
+```bash
+npm test
+```
+
+This runs the full test suite via Vitest against a throwaway test database (`tests/test.db`), which is deleted and recreated fresh before each test run. Tests never touch the development database (`data/app.db`).
+
+## Notes for Windows users
+
+This project was developed on Windows/PowerShell. If cloning to a folder synced by OneDrive, native module installs (`better-sqlite3`) and Next.js's build cache (`.next`) can occasionally be corrupted by real-time sync. If you hit unexplained module or cache errors, try:
+
+```bash
+Remove-Item -Recurse -Force .next
+npm run dev
+```
+
+or, if a full reinstall is needed:
+
+```bash
+Remove-Item -Recurse -Force node_modules
+Remove-Item -Force package-lock.json
+npm install
+```
+```
+
+## Add AI declaration lines
+
+Per your course's AI policy, every document needs an explicit declaration. Add this line at the very bottom of **all three** files above (adjust to match your actual tool/model use):
+
+```markdown
+---
+*This document was written with the assistance of AI (Claude, Claude Sonnet 5).*
+```
+
+## Commit
+
+```powershell
+git add .
+git commit -m "Add documentation: third-party code, database design, running instructions
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+---
+
+Next: your **README** needs the AI-usage category declarations (code generation / in-line editing / code review — usage or explicit non-usage for each). Want me to draft that too?
+
+#### **User** (8/2/2026, 1:18:59 PM):
+ yes please
+
+#### **Claude** (8/2/2026, 2:57:45 PM):
+ ## README.md
+
+This ties everything together — project overview, setup pointer, and the AI-usage declaration your policy requires.
+
+```powershell
+New-Item -ItemType File -Path README.md -Force
+```
+
+(The `-Force` overwrites the placeholder `create-next-app` generated, if it's still sitting there as boilerplate.)
+
+`README.md`:
+
+```markdown
+# COMS3011A - Lab 1: Todo App
+
+A local-first todo application built with Next.js and SQLite. Tasks can be created, edited, sorted, and archived (never deleted), with an automatically derived "overdue" indicator.
+
+## Features
+
+- Create tasks with title, description, due date, and topic
+- Edit any task field, including status (`todo` / `in_progress` / `complete`)
+- Archive and unarchive tasks (soft-delete via timestamp, not a hard delete)
+- Sort active tasks by due date, topic, or status
+- Automatic overdue flagging, derived at render time from due date and status
+- Full persistence via SQLite — data survives app restarts
+
+## Documentation
+
+- [Third-Party Code](docs/THIRD_PARTY.md)
+- [Database Design](docs/DATABASE.md)
+- [Running This Project](docs/RUNNING.md)
+
+## Quick start
+
+```bash
+npm install
+npm run dev
+```
+
+Visit `http://localhost:3000`. See [docs/RUNNING.md](docs/RUNNING.md) for full setup details, testing instructions, and Windows-specific notes.
+
+## AI Usage Declaration
+
+This project was developed with AI assistance (Claude, Claude Sonnet 5) throughout. Per the course AI usage policy:
+
+- **Code generation**: Used. AI generated initial implementations of the database schema, API routes, React components, and test suite, which were then reviewed, run, and in several cases corrected by hand (see commit history for specific fixes — e.g. a Turbopack native-module bundling issue, an ESM `__dirname` compatibility fix, and a misplaced overdue-badge bug caught during manual browser testing).
+- **In-line editing**: Used. AI assisted with iterative fixes to existing code in response to real errors encountered during development (e.g. PowerShell/bash syntax differences, native module compilation issues, brace mismatches).
+- **Code review**: Used. AI was used to review error output, terminal logs, and screenshots at each step to diagnose and confirm fixes before proceeding.
+
+Full AI conversation transcripts are included in the submission per the course's AI policy requirements.
+
+Every commit that included AI-assisted code is tagged in its commit message, e.g.:
+```
+Assisted-by: Claude-Web[Claude Sonnet 5]
+```
+
+---
+*This document was written with the assistance of AI (Claude, Claude Sonnet 5).*
+```
+
+## Commit
+
+```powershell
+git add .
+git commit -m "Add README with project overview and AI usage declaration
+
+Assisted-by: Claude-Web[Claude Sonnet 5]"
+git push origin main
+```
+
+---
+
+## What's left before submission
+
+1. **Export your AI transcripts** — you'll need to save/export this conversation (and any others you used) as part of your submission. Check your course platform for whether it wants a PDF, markdown export, or link.
+2. **Clean-clone dry run** — this is the most important remaining step. Delete your local copy entirely, re-clone from GitHub, and follow *only* your own `README.md`/`docs/RUNNING.md` to install, run, and test. This is exactly what your marker will do for the 28-mark functional walkthrough.
+
+Want to walk through the clean-clone dry run together now, so we catch anything before you submit?
+
+#### **User** (8/2/2026, 2:57:45 PM):
+ yes
+
+#### **Claude** (8/2/2026, 3:25:04 PM):
+ For a single conversation like this one, Claude.ai doesn't have a dedicated one-click "export this chat" button — there's only a full-account data export. Here's what actually works for your use case:
+
+## Easiest: manual copy → PDF (no tools needed)
+
+1. Scroll to the top of this conversation
+2. Select all the text (Ctrl+A won't work cleanly in-app since it'll select the whole page UI — instead, click at the very start of the first message, then shift-click at the very end of the last message to select just the conversation)
+3. Copy, then paste into a Word doc, Google Doc, or even Notepad
+4. Save as PDF or keep as-is — either is fine for a submission attachment
+
+Alternatively, simpler and more reliable:
+
+1. With the conversation open, press **Ctrl+P** (Print)
+2. In the print dialog, choose **"Save as PDF"** as the destination
+3. Save it — this captures the whole visible conversation, formatting included
+
+## Full account export (if your course wants raw/official data)
+
+Settings → **Privacy** → **Export data** → you'll get an email with a download link (valid ~24 hours) containing a ZIP with JSON data for *all* your conversations, not just this one. This is more comprehensive but less convenient — you'd need to locate this specific conversation inside the export and it's not especially human-readable as raw JSON.
+
+## Recommendation
+
+For your submission, print-to-PDF is almost certainly what you want — check your course's brief for whether it wants "AI transcripts" as PDF or plain text specifically, but PDF via Ctrl+P is the cleanest, most reliable option and preserves code blocks and formatting properly.
+
+#### **User** (8/2/2026, 3:25:04 PM):
+ How do I export this chat
+

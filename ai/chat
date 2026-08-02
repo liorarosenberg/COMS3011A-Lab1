@@ -1,0 +1,707 @@
+# ChatGPT Chat Transcript
+
+#### **User** (7/30/2026, 6:08:20 PM):
+ Go through these two documents thoroughly and then explain to me step by step what I need to do to get the best result
+
+#### **ChatGPT** (7/30/2026, 6:08:20 PM):
+ I went through both documents carefully. Here's what the lecturer is actually looking for, and what you should do if your goal is to score **close to 100%**.
+
+---
+
+# 1. Understand what is actually being marked
+
+Many people think this lab is just "build a todo app."
+
+It isn't.
+
+The marks are divided into:
+
+| Section | Marks |
+|---------|------:|
+| Functional application | 28 |
+| Documentation | 18 |
+| Commit history | 18 |
+| Database design | 16 |
+| Testing | 12 |
+| AI usage | 8 |
+
+Notice something?
+
+Only **28%** of your marks are for the application itself. The remaining **72%** is for **software engineering practices.** fileciteturn0file1L23-L65
+
+That means someone with a slightly worse app but excellent documentation, commits and tests can beat someone with a fancy app.
+
+---
+
+# 2. Build ONLY what is required
+
+Don't overcomplicate it.
+
+Your application needs exactly these features:
+
+## Create a task
+
+Each task must have:
+
+- Title
+- Description
+- Due Date
+- Topic
+
+Nothing else is required.
+
+---
+
+## Edit a task
+
+User should be able to modify an existing task.
+
+After refreshing the page...
+
+…the changes must still exist.
+
+That means it must be saved in SQLite.
+
+---
+
+## Archive a task
+
+This is important.
+
+The brief specifically says:
+
+> **Tasks cannot be deleted.**
+
+Instead:
+
+- archive them
+- remove them from active tasks
+- still allow the user to view archived tasks
+
+Don't implement Delete.
+
+That loses marks. fileciteturn0file1L1-L22
+
+---
+
+## Status
+
+Only three statuses:
+
+- Todo
+- In Progress
+- Complete
+
+These are fixed.
+
+Users cannot create their own statuses.
+
+---
+
+## Sorting
+
+The user must be able to sort by
+
+- Topic
+- Status
+- Due Date
+
+---
+
+## Overdue
+
+Very important.
+
+Overdue is **NOT** another status.
+
+Instead:
+
+if
+
+Today's date > Due Date
+
+AND
+
+Status ≠ Complete
+
+show something like
+
+🔴 Overdue
+
+or
+
+red text
+
+or
+
+warning icon.
+
+The rubric specifically says overdue should be **derived**, not stored in the database. fileciteturn0file1L45-L59
+
+---
+
+## Persistence
+
+Restart the application.
+
+Everything must still exist.
+
+If it disappears after restart...
+
+you lose marks.
+
+---
+
+# 3. Database Design (16 marks)
+
+This is where many students lose marks.
+
+Use SQLite.
+
+A good schema would look like:
+
+```
+Tasks
+
+id
+title
+description
+topic
+status
+dueDate
+archived
+createdAt
+updatedAt
+```
+
+Notice there is **no**
+
+```
+overdue
+```
+
+column.
+
+Why?
+
+Because overdue should be calculated from
+
+```
+today > dueDate
+```
+
+This is explicitly mentioned in the rubric. fileciteturn0file1L45-L59
+
+---
+
+# 4. Documentation (18 marks)
+
+You need markdown documentation with three required sections:
+
+## Third Party Code
+
+Not just
+
+```
+Next.js
+SQLite
+```
+
+Instead
+
+```
+Next.js
+Used to build the React application and routing.
+
+better-sqlite3
+Used for local SQLite database access.
+
+Tailwind CSS
+Used to quickly style the interface.
+```
+
+Explain why every dependency exists.
+
+---
+
+## Database Design
+
+Explain
+
+- tables
+- columns
+- relationships
+
+Even if you only have one table.
+
+---
+
+## Running It
+
+This needs:
+
+Node version
+
+Example:
+
+```
+Node v24.5.0
+```
+
+Then every command:
+
+```
+npm install
+
+npm run dev
+
+npm test
+```
+
+Someone should be able to clone your repository and run it without asking you anything.
+
+This is explicitly required. fileciteturn0file1L1-L22
+
+---
+
+# 5. Testing (12 marks)
+
+Need **at least 3 real tests.**
+
+Not
+
+```
+renders page
+```
+
+Real behaviour.
+
+For example:
+
+### Test 1
+
+Create task
+
+Verify it exists.
+
+---
+
+### Test 2
+
+Archive task
+
+Verify
+
+- active list no longer contains it
+- archived list does
+
+---
+
+### Test 3
+
+Overdue
+
+Create task
+
+Yesterday's date
+
+Status = Todo
+
+Verify
+
+```
+Overdue
+```
+
+is shown.
+
+This satisfies the rubric nicely. fileciteturn0file1L60-L65
+
+---
+
+# 6. Commit History (18 marks)
+
+This is worth almost as much as the application.
+
+Do NOT do
+
+```
+Initial commit
+
+Finished project
+```
+
+Instead:
+
+Example:
+
+```
+Initial Next.js project
+
+Create SQLite database
+
+Add task creation
+
+Implement editing
+
+Implement archiving
+
+Add sorting
+
+Add overdue indicator
+
+Write tests
+
+Improve README
+
+Final cleanup
+```
+
+At least six meaningful commits.
+
+Spread them across multiple sessions if possible.
+
+The rubric explicitly checks this. fileciteturn0file1L34-L44
+
+---
+
+# 7. AI Usage (8 marks)
+
+This module actually **encourages AI**, but they want you to use it responsibly. fileciteturn0file0L1-L29
+
+You need:
+
+## AI transcripts
+
+Planning
+
+Debugging
+
+Code generation
+
+Keep this conversation.
+
+Keep future conversations.
+
+Don't delete them.
+
+---
+
+### README
+
+If AI helped generate code, include declarations like:
+
+```
+This repository makes use of AI code generation using:
+
+ChatGPT Web [GPT-5.5]
+```
+
+If you used inline tools like GitHub Copilot, declare those too. fileciteturn0file0L30-L68
+
+---
+
+### Git commits
+
+Whenever AI generated code, include something like
+
+```
+Add task editing
+
+Assisted-by: ChatGPT-Web[GPT-5.5]
+```
+
+Exactly as described in the policy. fileciteturn0file0L30-L68
+
+---
+
+### Documentation declaration
+
+At the bottom of your documentation include something like
+
+```
+The preceding document was planned, reviewed and edited with the assistance of:
+
+ChatGPT-Web [GPT-5.5]
+```
+
+Without this declaration, the policy states the document will not be marked. fileciteturn0file0L18-L68
+
+---
+
+# 8. Functional Walkthrough
+
+Before submitting, pretend you're the marker.
+
+Start from a fresh clone and verify you can do all seven required steps:
+
+1. Clone the repository and follow only the README to install and start the app.
+2. Create a task with all four fields and confirm it appears.
+3. Edit the task, refresh the page, and verify the changes persist.
+4. Archive the task and confirm it disappears from the active list but remains viewable.
+5. Sort the task list by topic, status, and due date.
+6. Create an overdue task and verify it is visibly flagged without adding an "Overdue" status.
+7. Stop and restart the application, then confirm all data is still present. fileciteturn0file1L23-L33
+
+If any of these fail, those marks are lost.
+
+---
+
+# My recommended development plan
+
+To maximize both your marks and your time, I'd build the project in this order:
+
+1. Create the Next.js project and initialize the Git repository.
+2. Set up the SQLite database schema.
+3. Implement task creation.
+4. Display the task list.
+5. Add task editing.
+6. Implement archiving and an archived tasks view.
+7. Add sorting by topic, status, and due date.
+8. Compute and display overdue indicators (without storing them).
+9. Write at least three meaningful automated tests.
+10. Write the documentation (README and required markdown sections).
+11. Add AI declarations to the README and documentation, and ensure AI-assisted commits include the required `Assisted-by:` line.
+12. Perform a complete clean-clone walkthrough using only your README before submitting.
+
+## One final piece of advice
+
+Given the marking scheme, don't spend hours making the interface beautiful until everything else is complete. A simple, clean UI that satisfies every functional requirement, backed by solid documentation, testing, commit history, database design, and AI attribution, is far more likely to earn full marks than a polished interface missing those engineering requirements.
+
+#### **User** (7/30/2026, 7:38:03 PM):
+ [object Object]
+what must I do for the add .gitignore
+
+#### **ChatGPT** (7/30/2026, 8:06:17 PM):
+ Perfect! 🎉 That's **exactly** what you should see. It means your Next.js application was created successfully and is running correctly.
+
+Now let's make sure your project is in a good state before we start building.
+
+## Step 1: Commit your setup
+
+Open **another terminal** in VS Code (leave `npm run dev` running).
+
+Run:
+
+```bash
+git status
+```
+
+Then:
+
+```bash
+git add .
+```
+
+Then commit:
+
+```bash
+git commit
+```
+
+Your editor will open. Write:
+
+```text
+Initialize Next.js project
+
+Assisted-by: ChatGPT-Web[GPT-5.5]
+```
+
+Then save and close the editor.
+
+Finally:
+
+```bash
+git push
+```
+
+---
+
+## Step 2: Tell me one thing
+
+Can you tell me **which SQLite package your lecturer expects you to use?**
+
+For example, have they mentioned:
+
+- `better-sqlite3`
+- `sqlite3`
+- `Prisma`
+- `Drizzle`
+- or nothing at all?
+
+The lab brief only says **"SQLite"** and doesn't prescribe a specific library. fileciteturn0file1L1-L22
+
+---
+
+## Step 3: What we'll do next
+
+Rather than jumping straight into coding, we'll first design the project properly. This will make the implementation much easier and also help with the documentation marks.
+
+The next steps will be:
+
+1. Decide on the folder structure.
+2. Design the SQLite database schema.
+3. Install the SQLite library.
+4. Create the database.
+5. Build the task model.
+6. Start implementing the UI feature by feature.
+
+We'll make a proper Git commit after each meaningful step so that your commit history also satisfies the rubric.
+
+#### **User** (7/30/2026, 8:06:17 PM):
+ [object Object]
+this comes up
+
+#### **ChatGPT** (7/30/2026, 8:08:51 PM):
+ This is exactly what I'd expect after creating a new Next.js project. Nothing is wrong.
+
+Here's what `git status` is telling you:
+
+- **Modified files**:
+  - `.gitignore` (Next.js added its own entries)
+  - `README.md` (Next.js replaced the default GitHub README)
+
+- **Untracked files**:
+  - `package.json`
+  - `package-lock.json`
+  - `src/`
+  - `public/`
+  - configuration files like `next.config.mjs`, `eslint.config.mjs`, etc.
+
+These are all the files created by `create-next-app`.
+
+### Now do this
+
+Stage everything:
+
+```bash
+git add .
+```
+
+Check again:
+
+```bash
+git status
+```
+
+You should now see something like:
+
+```text
+Changes to be committed:
+    modified: .gitignore
+    modified: README.md
+    new file: package.json
+    new file: src/app/page.js
+    ...
+```
+
+Then commit:
+
+```bash
+git commit
+```
+
+Your editor will open. Use this commit message:
+
+```text
+Initialize Next.js project
+
+Assisted-by: ChatGPT-Web[GPT-5.5]
+```
+
+Then push:
+
+```bash
+git push
+```
+
+### Before we continue
+
+After you run `git add .`, show me the output of:
+
+```bash
+git status
+```
+
+I want to make sure **everything** is staged correctly before you make your first commit. This is a good habit and will help keep your commit history clean.
+
+#### **User** (7/30/2026, 8:08:51 PM):
+ git status
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   .gitignore
+        modified:   README.md
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        eslint.config.mjs
+        jsconfig.json
+        next.config.mjs
+        package-lock.json
+        package.json
+        postcss.config.mjs
+        public/
+        src/
+
+no changes added to commit (use "git add" and/or "git commit -a")
+
+#### **ChatGPT** (7/30/2026, 8:13:26 PM):
+ The most likely reason is that **you haven't committed and pushed the changes yet**.
+
+Creating the files on your computer does **not** automatically upload them to GitHub.
+
+Let's check where you are.
+
+### 1. Did you run `git add .`?
+
+If not:
+
+```bash
+git add .
+```
+
+### 2. Did you create the commit?
+
+Run:
+
+```bash
+git status
+```
+
+Tell me exactly what it says.
+
+- If it says **"Changes to be committed"**, you still need to commit.
+- If it says **"nothing to commit, working tree clean"**, then the commit succeeded.
+
+### 3. Did you push?
+
+After committing, you must run:
+
+```bash
+git push
+```
+
+Only after `git push` will the files appear on GitHub.
+
+---
+
+## Please send me the output of these two commands:
+
+```bash
+git status
+```
+
+and
+
+```bash
+git log --oneline -3
+```
+
+Those two outputs will tell me exactly where the process stopped, and I'll tell you the next command to run.
+
+#### **User** (7/30/2026, 8:13:26 PM):
+ why isnt it showing up in my repo on github
