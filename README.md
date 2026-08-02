@@ -28,7 +28,7 @@ Visit `http://localhost:3000`. See [docs/RUNNING.md](docs/RUNNING.md) for full s
 
 ## AI Usage Declaration
 
-This project was developed with AI assistance (Claude, Claude Sonnet 5) throughout. Per the course AI usage policy:
+This project was developed with AI assistance (Claude, Claude Sonnet 5 and ChatGPT, ChatGPT-Web[GPT-5.5]) throughout. Per the course AI usage policy:
 
 - **Code generation**: Used. AI generated initial implementations of the database schema, API routes, React components, and test suite, which were then reviewed, run, and in several cases corrected by hand (see commit history for specific fixes — e.g. a Turbopack native-module bundling issue, an ESM `__dirname` compatibility fix, and a misplaced overdue-badge bug caught during manual browser testing).
 - **In-line editing**: Used. AI assisted with iterative fixes to existing code in response to real errors encountered during development (e.g. PowerShell/bash syntax differences, native module compilation issues, brace mismatches).
