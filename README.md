@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# COMS3011A - Lab 1: Todo App
 
-## Getting Started
+A local-first todo application built with Next.js and SQLite. Tasks can be created, edited, sorted, and archived (never deleted), with an automatically derived "overdue" indicator.
 
-First, run the development server:
+## Features
+
+- Create tasks with title, description, due date, and topic
+- Edit any task field, including status (`todo` / `in_progress` / `complete`)
+- Archive and unarchive tasks (soft-delete via timestamp, not a hard delete)
+- Sort active tasks by due date, topic, or status
+- Automatic overdue flagging, derived at render time from due date and status
+- Full persistence via SQLite — data survives app restarts
+
+## Documentation
+
+- [Third-Party Code](docs/THIRD_PARTY.md)
+- [Database Design](docs/DATABASE.md)
+- [Running This Project](docs/RUNNING.md)
+
+## Quick start
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Visit `http://localhost:3000`. See [docs/RUNNING.md](docs/RUNNING.md) for full setup details, testing instructions, and Windows-specific notes.
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## AI Usage Declaration
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+This project was developed with AI assistance (Claude, Claude Sonnet 5) throughout. Per the course AI usage policy:
 
-## Learn More
+- **Code generation**: Used. AI generated initial implementations of the database schema, API routes, React components, and test suite, which were then reviewed, run, and in several cases corrected by hand (see commit history for specific fixes — e.g. a Turbopack native-module bundling issue, an ESM `__dirname` compatibility fix, and a misplaced overdue-badge bug caught during manual browser testing).
+- **In-line editing**: Used. AI assisted with iterative fixes to existing code in response to real errors encountered during development (e.g. PowerShell/bash syntax differences, native module compilation issues, brace mismatches).
+- **Code review**: Used. AI was used to review error output, terminal logs, and screenshots at each step to diagnose and confirm fixes before proceeding.
 
-To learn more about Next.js, take a look at the following resources:
+Full AI conversation transcripts are included in the submission per the course's AI policy requirements.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Every commit that included AI-assisted code is tagged in its commit message, e.g.: Assisted-by: Claude-Web[Claude Sonnet 5]
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+*This document was written with the assistance of AI (Claude, Claude Sonnet 5).*
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
