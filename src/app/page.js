@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { isOverdue } from '@/lib/overdue';
 
 export default function Home() {
   const [tasks, setTasks] = useState([]);
@@ -95,14 +96,6 @@ const saveEdit = async (id) => {
   });
   setEditingId(null);
   fetchTasks(showArchived);
-};
-
-const isOverdue = (task) => {
-  if (!task.due_date || task.status === 'complete') return false;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const due = new Date(task.due_date);
-  return due < today;
 };
 
   return (

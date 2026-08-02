@@ -1,4 +1,5 @@
 import db from '@/lib/db';
+import { archiveTask, unarchiveTask } from '@/lib/tasks';
 import { NextResponse } from 'next/server';
 
 export async function PATCH(request, { params }) {
@@ -10,18 +11,8 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ error: 'Task not found' }, { status: 404 });
   }
 
-  if (body.archive === true) {
-    db.prepare(`
-      UPDATE tasks SET archived_at = datetime('now'), updated_at = datetime('now')
-      WHERE id = ?
-    `).run(id);
-  }
-  if (body.archive === false) {
-    db.prepare(`
-      UPDATE tasks SET archived_at = NULL, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(id);
-  }
+  if (body.archive === true) archiveTask(id);
+  if (body.archive === false) unarchiveTask(id);
 
   const editable = ['title', 'description', 'due_date', 'topic', 'status'];
   const fieldsToUpdate = editable.filter((f) => body[f] !== undefined);
@@ -29,11 +20,7 @@ export async function PATCH(request, { params }) {
   if (fieldsToUpdate.length > 0) {
     const setClause = fieldsToUpdate.map((f) => `${f} = ?`).join(', ');
     const values = fieldsToUpdate.map((f) => body[f]);
-
-    db.prepare(`
-      UPDATE tasks SET ${setClause}, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(...values, id);
+    db.prepare(`UPDATE tasks SET ${setClause}, updated_at = datetime('now') WHERE id = ?`).run(...values, id);
   }
 
   const updated = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
