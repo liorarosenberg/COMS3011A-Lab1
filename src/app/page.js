@@ -97,6 +97,14 @@ const saveEdit = async (id) => {
   fetchTasks(showArchived);
 };
 
+const isOverdue = (task) => {
+  if (!task.due_date || task.status === 'complete') return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(task.due_date);
+  return due < today;
+};
+
   return (
   <main className="max-w-2xl mx-auto p-8">
     <h1 className="text-2xl font-bold mb-6">My Tasks</h1>
@@ -138,7 +146,8 @@ const saveEdit = async (id) => {
 
     <ul className="space-y-2">
       {sortedTasks.map((task) => (
-        <li key={task.id} className="border rounded p-3">
+        <li key={task.id}
+  className={`border rounded p-3 ${isOverdue(task) ? 'border-red-400 bg-red-50' : ''}`}>
   {editingId === task.id ? (
     <div className="space-y-2">
       <input
@@ -193,9 +202,12 @@ const saveEdit = async (id) => {
       <div>
         <div className="font-semibold">{task.title}</div>
         <div className="text-sm text-gray-600">{task.description}</div>
-        <div className="text-xs text-gray-400 mt-1">
-          {task.topic} · {task.status} · due {task.due_date || 'no date'}
-        </div>
+<div className="text-xs text-gray-400 mt-1">
+  {task.topic} · {task.status} · due {task.due_date || 'no date'}
+  {isOverdue(task) && (
+    <span className="ml-2 text-red-600 font-semibold">Overdue</span>
+  )}
+</div>
       </div>
       <div className="flex gap-3 ml-4 shrink-0">
         <button
