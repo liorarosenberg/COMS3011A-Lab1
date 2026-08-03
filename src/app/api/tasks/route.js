@@ -1,16 +1,10 @@
-import db from '@/lib/db';
+import { createTask, getTasks } from '@/lib/tasks';
 import { NextResponse } from 'next/server';
 
-// GET /api/tasks - list all non-archived tasks
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const showArchived = searchParams.get('archived') === 'true';
-
-  const tasks = showArchived
-    ? db.prepare(`SELECT * FROM tasks WHERE archived_at IS NOT NULL ORDER BY due_date ASC`).all()
-    : db.prepare(`SELECT * FROM tasks WHERE archived_at IS NULL ORDER BY due_date ASC`).all();
-
-  return NextResponse.json(tasks);
+  return NextResponse.json(getTasks(showArchived));
 }
 
 export async function POST(request) {
@@ -18,18 +12,9 @@ export async function POST(request) {
   const { title, description, due_date, topic } = body;
 
   if (!title || !topic) {
-    return NextResponse.json(
-      { error: 'title and topic are required' },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: 'title and topic are required' }, { status: 400 });
   }
 
-  const result = db.prepare(`
-    INSERT INTO tasks (title, description, due_date, topic)
-    VALUES (?, ?, ?, ?)
-  `).run(title, description || null, due_date || null, topic);
-
-  const newTask = db.prepare('SELECT * FROM tasks WHERE id = ?').get(result.lastInsertRowid);
-
+  const newTask = createTask({ title, description, due_date, topic });
   return NextResponse.json(newTask, { status: 201 });
 }

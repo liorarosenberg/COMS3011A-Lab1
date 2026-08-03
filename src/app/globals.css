@@ -1,26 +1,93 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #faf9f4;
+  --ink: #20261f;
+  --ink-soft: #5c6b63;
+  --line: #dbe6de;
+  --amber: #c98a2c;
+  --teal: #2b6e68;
+  --overdue: #b3261e;
+  --todo-dot: #8a8f98;
+  --progress-dot: #c98a2c;
+  --complete-dot: #2b6e68;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-line: var(--line);
+  --color-amber: var(--amber);
+  --color-teal: var(--teal);
+  --color-overdue: var(--overdue);
+  --font-display: var(--font-space-grotesk);
+  --font-body: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body), sans-serif;
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-position: -1px -1px;
 }
+
+:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+/* Punch-hole binder margin, running down the left edge of the page */
+.binder-margin {
+  position: relative;
+}
+.binder-margin::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2.5rem;
+  background-image: radial-gradient(circle, var(--ink) 3px, transparent 3px);
+  background-size: 100% 3.5rem;
+  background-position: 50% 1.75rem;
+  opacity: 0.1;
+  pointer-events: none;
+}
+
+/* Task cards styled as log entries, color-tabbed by status */
+.entry-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  box-shadow: 2px 2px 0 rgba(32, 38, 31, 0.05);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.entry-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 3px 4px 0 rgba(32, 38, 31, 0.08);
+}
+.entry-card.status-todo { border-left-color: var(--todo-dot); }
+.entry-card.status-in_progress { border-left-color: var(--progress-dot); }
+.entry-card.status-complete { border-left-color: var(--complete-dot); }
+.entry-card.is-overdue {
+  border-left-color: var(--overdue);
+  background: #fdf4f3;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  margin-right: 0.4rem;
+  vertical-align: middle;
+}
+.status-dot.status-todo { background: var(--todo-dot); }
+.status-dot.status-in_progress { background: var(--progress-dot); }
+.status-dot.status-complete { background: var(--complete-dot); }
